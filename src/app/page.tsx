@@ -7,6 +7,7 @@ import { DoubleSide, Mesh } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import RobotArm from '@/components/RobotArm';
+import { computeIkAnglesFabrik, type IkConfig } from '@/lib/ik';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -24,6 +25,17 @@ export default function Home() {
   );
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
+
+  function computeIkAngles(target: [number, number, number]) {
+    const config: IkConfig = {
+      basePosition: [0, -1, 0],
+      elbowOffsetFromBaseLocal: [4, 3, 0],
+      endEffectorLength: 10,
+      pitchMinDeg: -90,
+      pitchMaxDeg: 90,
+    };
+    return computeIkAnglesFabrik(target, { yawDeg: angle1Deg, pitchDeg: angle2Deg }, config);
+  }
 
   return (
     <div className="relative w-screen h-screen">
@@ -69,7 +81,11 @@ export default function Home() {
             if (orbitRef.current) orbitRef.current.enabled = true;
             // e.object is the controlled object
             const obj = (e as unknown as { target: { object: Mesh } }).target.object;
-            setSpherePos([obj.position.x, obj.position.y, obj.position.z]);
+            const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+            setSpherePos(pos);
+            const { yawDeg, pitchDeg } = computeIkAngles(pos);
+            setAngle1Deg(yawDeg);
+            setAngle2Deg(Math.max(-90, Math.min(90, pitchDeg)));
           }}
         >
           <mesh position={[0, 0, 0]}>

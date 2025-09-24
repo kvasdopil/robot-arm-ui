@@ -55,6 +55,11 @@ export function RobotArm({ angle1 = 0, angle2 = 0 }: { angle1?: number; angle2?:
                             <cylinderGeometry args={[2, 2, 10, 24]} />
                             <meshStandardMaterial color="#ff0000" />
                         </mesh>
+                        {/* End effector visual at local [0,10,0] */}
+                        <mesh position={[0, 10, 0]}>
+                            <sphereGeometry args={[0.3, 16, 16]} />
+                            <meshStandardMaterial color="#00ff00" />
+                        </mesh>
                     </AxisRotation>
                 </AxisRotation>
             </group>
