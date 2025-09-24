@@ -22,9 +22,37 @@ export default function Home() {
     'sphere-position',
     [1, 3, -1],
   );
+  const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
+  const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
 
   return (
-    <div className="w-screen h-screen">
+    <div className="relative w-screen h-screen">
+      <div className="absolute left-4 top-4 z-10 rounded-md bg-white/80 dark:bg-black/60 backdrop-blur p-3 shadow text-sm space-y-2">
+        <div>
+          <label htmlFor="angle1" className="block mb-1">Base yaw (deg): {Math.round(angle1Deg)}</label>
+          <input
+            id="angle1"
+            type="range"
+            min={-180}
+            max={180}
+            step={1}
+            value={angle1Deg}
+            onChange={(e) => setAngle1Deg(Number(e.target.value))}
+          />
+        </div>
+        <div>
+          <label htmlFor="angle2" className="block mb-1">Shoulder pitch (deg): {Math.round(angle2Deg)}</label>
+          <input
+            id="angle2"
+            type="range"
+            min={-90}
+            max={90}
+            step={1}
+            value={Math.min(Math.max(angle2Deg, -90), 90)}
+            onChange={(e) => setAngle2Deg(Number(e.target.value))}
+          />
+        </div>
+      </div>
       <Canvas camera={{ position: cameraPos, fov: 50 }}>
         <SceneInitializer orbitRef={orbitRef} cameraTarget={cameraTarget} />
         <color attach="background" args={['lightgray']} />
@@ -50,7 +78,7 @@ export default function Home() {
           </mesh>
         </TransformControls>
 
-        <RobotArm />
+        <RobotArm angle1={(angle1Deg * Math.PI) / 180} angle2={(Math.min(Math.max(angle2Deg, -90), 90) * Math.PI) / 180} />
 
         <Grid cellSize={1} sectionSize={10} infiniteGrid side={DoubleSide} />
         <OrbitControls
