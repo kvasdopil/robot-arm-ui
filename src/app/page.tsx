@@ -2,6 +2,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
+import { DoubleSide } from 'three';
 
 export default function Home() {
   return (
@@ -16,7 +17,7 @@ export default function Home() {
           <meshStandardMaterial color="red" />
         </mesh>
 
-        <Grid cellSize={1} sectionSize={10} infiniteGrid />
+        <Grid cellSize={1} sectionSize={10} infiniteGrid side={DoubleSide} />
         <OrbitControls enableRotate enableZoom minDistance={1} maxDistance={100} />
       </Canvas>
     </div>
