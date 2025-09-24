@@ -6,6 +6,7 @@ import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
 import { DoubleSide, Mesh } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import RobotArm from '@/components/RobotArm';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -49,10 +50,7 @@ export default function Home() {
           </mesh>
         </TransformControls>
 
-        <mesh>
-          <boxGeometry args={[2, 2, 2]} />
-          <meshStandardMaterial color="red" />
-        </mesh>
+        <RobotArm />
 
         <Grid cellSize={1} sectionSize={10} infiniteGrid side={DoubleSide} />
         <OrbitControls
