@@ -146,10 +146,13 @@ export default function Home() {
             const obj = (e as unknown as { target: { object: Mesh } }).target.object;
             const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
             setSpherePos(pos);
-            const solved = solveIkWithIkts(pos);
-            const { yawDeg, pitchDeg } = extractYawPitchDegrees(solved);
+            const solved = solveIkWithIkts(pos, { ankle2Length: 4, forearmLength: 10 });
+            const { yawDeg, pitchDeg, forearmDeg } = extractYawPitchDegrees(solved);
             setAngle1Deg(yawDeg);
             setAngle2Deg(Math.max(-90, Math.min(90, pitchDeg)));
+            if (typeof forearmDeg === 'number' && Number.isFinite(forearmDeg)) {
+              setAngle3Deg(Math.max(-90, Math.min(90, forearmDeg)));
+            }
           }}
         >
           <mesh position={[0, 0, 0]}>
