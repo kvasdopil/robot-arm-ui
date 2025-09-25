@@ -45,8 +45,12 @@ export default function Home() {
   const fromRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
   const toRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const lastG1AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
+  const lastG1BonesRef = useRef<BonePoint[] | null>(null);
+  const lastG2AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
+  const lastG2BonesRef = useRef<BonePoint[] | null>(null);
 
-  function runIk(pos: [number, number, number]) {
+  function runIk(pos: [number, number, number], goal?: 1 | 2) {
     try {
       fetchAbortRef.current?.abort();
     } catch { }
@@ -69,11 +73,28 @@ export default function Home() {
           setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
           setAngle3Deg(Math.max(-90, Math.min(90, angles.forearmPitchDeg)));
           setServerBones(bones);
+          if (goal === 1) {
+            lastG1AnglesRef.current = angles;
+            lastG1BonesRef.current = bones;
+          } else if (goal === 2) {
+            lastG2AnglesRef.current = angles;
+            lastG2BonesRef.current = bones;
+          }
         },
       )
       .catch(() => {
         // ignore abort/errors
       });
+  }
+
+  function applyGoal(goal: 1 | 2) {
+    const a = goal === 1 ? lastG1AnglesRef.current : lastG2AnglesRef.current;
+    const b = goal === 1 ? lastG1BonesRef.current : lastG2BonesRef.current;
+    if (!a || !b) return;
+    setAngle1Deg(a.baseYawDeg);
+    setAngle2Deg(Math.max(-90, Math.min(90, a.shoulderPitchDeg)));
+    setAngle3Deg(Math.max(-90, Math.min(90, a.forearmPitchDeg)));
+    setServerBones(b);
   }
 
   function normalizeDeltaDeg(delta: number): number {
@@ -123,6 +144,24 @@ export default function Home() {
 
   return (
     <div className="relative w-screen h-screen">
+      <div className="flex items-center gap-2 absolute right-4 top-4 z-10 flex-row">
+        <button
+          type="button"
+          onClick={() => applyGoal(1)}
+          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          title="Apply last IK for goal 1"
+        >
+          1
+        </button>
+        <button
+          type="button"
+          onClick={() => applyGoal(2)}
+          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          title="Apply last IK for goal 2"
+        >
+          2
+        </button>
+      </div>
       <div className="absolute left-4 top-4 z-10 rounded-md bg-white/80 dark:bg-black/60 backdrop-blur p-3 shadow text-sm space-y-2">
         <div>
           <label htmlFor="angle1" className="block mb-1">
@@ -190,7 +229,7 @@ export default function Home() {
             if (!obj) return;
             const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
             setSpherePos(pos);
-            runIk(pos);
+            runIk(pos, 1);
             dragging1Ref.current = false;
           }}
         >
@@ -217,7 +256,7 @@ export default function Home() {
             if (!obj) return;
             const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
             setSphere2Pos(pos);
-            runIk(pos);
+            runIk(pos, 2);
             dragging2Ref.current = false;
           }}
         >
