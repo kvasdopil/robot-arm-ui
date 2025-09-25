@@ -88,6 +88,8 @@ Notes:
 
 - The API uses the project venv Python at `.venv/bin/python` and launches `scripts/ik_solver.py`.
 - Arm configuration is currently hardcoded in the solver (base=3, shoulder=4, ankle=10, ankle2=4, forearm=10).
+- Joint clamps in server output: shoulder ±90°, forearm ±135°.
+- If your venv lives elsewhere, update the Python path in `src/app/api/ik/route.ts`.
 
 ### Python Solver
 
@@ -137,4 +139,14 @@ npm run start      # Start prod server
 npm run lint       # ESLint
 npm run format     # Prettier check
 npm run format:fix # Prettier write
+```
+
+Using yarn:
+
+```bash
+yarn dev
+yarn build
+yarn start
+yarn lint     # runs eslint then typecheck (tsc --noEmit)
+yarn format   # prettier --write .
 ```
