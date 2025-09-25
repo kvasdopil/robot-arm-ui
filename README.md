@@ -11,16 +11,17 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 
 ### Features
 
-- Fullscreen 3D scene with grid, orbit controls, and two draggable target spheres
+- Fullscreen 3D scene with grid, orbit controls, and multiple draggable target spheres (Add with +)
 - Simple arm visualization with joints: base yaw, shoulder pitch, ankle, fixed ankle2, forearm pitch
 - UI sliders for base, shoulder, and forearm angles
 - Backend IK endpoint computes angles and a bones chain for visualization
-- Arm follows the target that was dragged last; IK recalculates during drags
-- Camera and target positions persist between reloads
+- Arm follows the selected target; IK recalculates when you release the drag (mouse up)
+- Camera and all targets persist between reloads
+- Joint limits: shoulder ±90°, forearm ±135°
 
 ### Project Layout Highlights
 
-- `src/app/page.tsx`: Scene, controls, UI, two draggable targets, and calls `/api/ik`
+- `src/app/page.tsx`: Scene, controls, UI, dynamic targets, and calls `/api/ik`
 - `src/components/RobotArm.tsx`: Arm visualization receiving angles (radians)
 - `src/components/IkDebug.tsx`: Renders bones chain returned by backend
 - `src/app/api/ik/route.ts`: Next.js API route spawning Python solver
@@ -34,13 +35,13 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 
 ### Setup
 
-1) Install Node deps
+1. Install Node deps
 
 ```bash
 npm install
 ```
 
-2) Create venv and install Python deps (ikpy, numpy, scipy, sympy)
+2. Create venv and install Python deps (ikpy, numpy, scipy, sympy)
 
 ```bash
 python3 -m venv .venv
@@ -48,7 +49,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3) Start Next.js
+3. Start Next.js
 
 ```bash
 npm run dev
@@ -84,6 +85,7 @@ npm run dev
 ```
 
 Notes:
+
 - The API uses the project venv Python at `.venv/bin/python` and launches `scripts/ik_solver.py`.
 - Arm configuration is currently hardcoded in the solver (base=3, shoulder=4, ankle=10, ankle2=4, forearm=10).
 
@@ -107,7 +109,8 @@ echo '{"target":[1,3,-1]}' | .venv/bin/python scripts/ik_solver.py
 ### Usage
 
 - Orbit to view the scene
-- Drag either target sphere (orange or purple). The arm tracks the last-dragged sphere and recalculates IK continuously while you drag
+- Click numbered buttons to select a target; click + to add another
+- Drag the active target sphere; IK runs on mouse up and animates to the solution
 - Adjust sliders to manually set angles
 
 To reset saved state:
@@ -115,8 +118,7 @@ To reset saved state:
 ```js
 localStorage.removeItem('camera-position');
 localStorage.removeItem('camera-target');
-localStorage.removeItem('sphere-position');
-localStorage.removeItem('sphere2-position');
+localStorage.removeItem('targets');
 ```
 
 ### Troubleshooting

@@ -2,10 +2,16 @@
 
 import { Line } from '@react-three/drei';
 
-export type BonePoint = { name: string; start: [number, number, number]; end: [number, number, number] };
+export type BonePoint = {
+  name: string;
+  start: [number, number, number];
+  end: [number, number, number];
+};
 
 export function IkDebug({ bones }: { bones: BonePoint[] }) {
-  const points: [number, number, number][] = bones.flatMap((b, i) => (i === 0 ? [b.start, b.end] : [b.end]));
+  const points: [number, number, number][] = bones.flatMap((b, i) =>
+    i === 0 ? [b.start, b.end] : [b.end],
+  );
   return (
     <group>
       <Line points={points} color="black" lineWidth={2} dashed={false} transparent opacity={0.8} />
