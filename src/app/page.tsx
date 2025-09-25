@@ -11,6 +11,10 @@ import IkDebug, { BonePoint } from '@/components/IkDebug';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
+  const tc1Ref = useRef<any>(null);
+  const tc2Ref = useRef<any>(null);
+  const dragging1Ref = useRef<boolean>(false);
+  const dragging2Ref = useRef<boolean>(false);
   const [cameraPos, setCameraPos] = usePersistedState<[number, number, number]>(
     'camera-position',
     [10, 10, 10],
@@ -22,6 +26,10 @@ export default function Home() {
   const [spherePos, setSpherePos] = usePersistedState<[number, number, number]>(
     'sphere-position',
     [1, 3, -1],
+  );
+  const [sphere2Pos, setSphere2Pos] = usePersistedState<[number, number, number]>(
+    'sphere2-position',
+    [-2, 3, 2],
   );
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
@@ -36,6 +44,37 @@ export default function Home() {
   const animStartRef = useRef<number>(0);
   const fromRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
   const toRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
+  function runIk(pos: [number, number, number]) {
+    try {
+      fetchAbortRef.current?.abort();
+    } catch { }
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetch('/api/ik', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: pos }),
+      signal: controller.signal,
+    })
+      .then((r) => r.json())
+      .then(
+        (data: {
+          angles: { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
+          bones: BonePoint[];
+        }) => {
+          const { angles, bones } = data;
+          setAngle1Deg(angles.baseYawDeg);
+          setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
+          setAngle3Deg(Math.max(-90, Math.min(90, angles.forearmPitchDeg)));
+          setServerBones(bones);
+        },
+      )
+      .catch(() => {
+        // ignore abort/errors
+      });
+  }
 
   function normalizeDeltaDeg(delta: number): number {
     let d = ((delta + 180) % 360) - 180;
@@ -135,39 +174,56 @@ export default function Home() {
         <directionalLight position={[5, 5, 5]} intensity={0.8} />
 
         <TransformControls
+          ref={tc1Ref}
           mode="translate"
           position={spherePos}
           onMouseDown={() => {
             if (orbitRef.current) orbitRef.current.enabled = false;
+            dragging1Ref.current = true;
           }}
-          onMouseUp={(e) => {
+          onChange={() => {
+            // no-op during drag; IK runs on mouse up only
+          }}
+          onMouseUp={() => {
             if (orbitRef.current) orbitRef.current.enabled = true;
-            // e.object is the controlled object
-            const obj = (e as unknown as { target: { object: Mesh } }).target.object;
+            const obj = (tc1Ref.current?.object as Mesh | undefined) ?? undefined;
+            if (!obj) return;
             const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
             setSpherePos(pos);
-            // Call backend IK
-            fetch('/api/ik', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ target: pos }),
-            })
-              .then((r) => r.json())
-              .then((data: { angles: { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number }; bones: BonePoint[] }) => {
-                const { angles, bones } = data;
-                setAngle1Deg(angles.baseYawDeg);
-                setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
-                setAngle3Deg(Math.max(-90, Math.min(90, angles.forearmPitchDeg)));
-                setServerBones(bones);
-              })
-              .catch(() => {
-                // fall back: keep current angles
-              });
+            runIk(pos);
+            dragging1Ref.current = false;
           }}
         >
           <mesh position={[0, 0, 0]}>
             <sphereGeometry args={[0.25, 32, 32]} />
             <meshStandardMaterial color="orange" />
+          </mesh>
+        </TransformControls>
+
+        <TransformControls
+          ref={tc2Ref}
+          mode="translate"
+          position={sphere2Pos}
+          onMouseDown={() => {
+            if (orbitRef.current) orbitRef.current.enabled = false;
+            dragging2Ref.current = true;
+          }}
+          onChange={() => {
+            // no-op during drag; IK runs on mouse up only
+          }}
+          onMouseUp={() => {
+            if (orbitRef.current) orbitRef.current.enabled = true;
+            const obj = (tc2Ref.current?.object as Mesh | undefined) ?? undefined;
+            if (!obj) return;
+            const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+            setSphere2Pos(pos);
+            runIk(pos);
+            dragging2Ref.current = false;
+          }}
+        >
+          <mesh position={[0, 0, 0]}>
+            <sphereGeometry args={[0.25, 32, 32]} />
+            <meshStandardMaterial color="#8a2be2" />
           </mesh>
         </TransformControls>
 

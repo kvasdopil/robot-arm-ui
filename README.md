@@ -11,15 +11,16 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 
 ### Features
 
-- Fullscreen 3D scene with grid, orbit controls, and a draggable orange target sphere
+- Fullscreen 3D scene with grid, orbit controls, and two draggable target spheres
 - Simple arm visualization with joints: base yaw, shoulder pitch, ankle, fixed ankle2, forearm pitch
 - UI sliders for base, shoulder, and forearm angles
 - Backend IK endpoint computes angles and a bones chain for visualization
+- Arm follows the target that was dragged last; IK recalculates during drags
 - Camera and target positions persist between reloads
 
 ### Project Layout Highlights
 
-- `src/app/page.tsx`: Scene, controls, UI, and calls `/api/ik`
+- `src/app/page.tsx`: Scene, controls, UI, two draggable targets, and calls `/api/ik`
 - `src/components/RobotArm.tsx`: Arm visualization receiving angles (radians)
 - `src/components/IkDebug.tsx`: Renders bones chain returned by backend
 - `src/app/api/ik/route.ts`: Next.js API route spawning Python solver
@@ -106,7 +107,7 @@ echo '{"target":[1,3,-1]}' | .venv/bin/python scripts/ik_solver.py
 ### Usage
 
 - Orbit to view the scene
-- Drag the orange sphere to set the target; on release, the client requests `/api/ik`, applies returned angles to the arm, and renders the bones chain
+- Drag either target sphere (orange or purple). The arm tracks the last-dragged sphere and recalculates IK continuously while you drag
 - Adjust sliders to manually set angles
 
 To reset saved state:
@@ -115,6 +116,7 @@ To reset saved state:
 localStorage.removeItem('camera-position');
 localStorage.removeItem('camera-target');
 localStorage.removeItem('sphere-position');
+localStorage.removeItem('sphere2-position');
 ```
 
 ### Troubleshooting
