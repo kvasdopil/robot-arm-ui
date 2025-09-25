@@ -26,7 +26,7 @@ function AxisRotation({
     );
 }
 
-export function RobotArm({ angle1 = 0, angle2 = 0 }: { angle1?: number; angle2?: number }) {
+export function RobotArm({ angle1 = 0, angle2 = 0, angle3 = 0 }: { angle1?: number; angle2?: number; angle3?: number }) {
     return (
         <group>
             {/* Base segment: cylinder 20x20x2 cm at (0,0,-1) */}
@@ -54,6 +54,22 @@ export function RobotArm({ angle1 = 0, angle2 = 0 }: { angle1?: number; angle2?:
                             <cylinderGeometry args={[2, 2, 10, 24]} />
                             <meshStandardMaterial color="#ff0000" transparent opacity={0.3} depthWrite={false} />
                         </mesh>
+
+                        {/* ankle2: fixed offset [-3, 0, 0] relative to ankle end */}
+                        <group position={[-4, 10, 0]}>
+                            <mesh rotation={[0, 0, Math.PI / 2]}>
+                                <cylinderGeometry args={[2, 2, 4, 16]} />
+                                <meshStandardMaterial color="#00aa00" transparent opacity={0.5} depthWrite={false} />
+                            </mesh>
+
+                            {/* forearm: rotates around ankle2, extend along +Y */}
+                            <AxisRotation axis={[1, 0, 0]} angle={angle3} offset={[0, 0, 0]}>
+                                <mesh position={[0, 5, 0]}>
+                                    <cylinderGeometry args={[2, 2, 10, 24]} />
+                                    <meshStandardMaterial color="#00aa00" transparent opacity={0.35} depthWrite={false} />
+                                </mesh>
+                            </AxisRotation>
+                        </group>
                     </AxisRotation>
                 </AxisRotation>
             </group>

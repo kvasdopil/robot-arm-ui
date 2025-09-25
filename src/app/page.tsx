@@ -26,14 +26,16 @@ export default function Home() {
   );
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
+  const [angle3Deg, setAngle3Deg] = usePersistedState<number>('arm-angle3-deg', 0);
 
   // Animated angles (tween to target in 0.5s)
   const [animA1, setAnimA1] = useState<number>(0);
   const [animA2, setAnimA2] = useState<number>(0);
+  const [animA3, setAnimA3] = useState<number>(0);
   const rafRef = useRef<number | null>(null);
   const animStartRef = useRef<number>(0);
-  const fromRef = useRef<{ a1: number; a2: number }>({ a1: 0, a2: 0 });
-  const toRef = useRef<{ a1: number; a2: number }>({ a1: 0, a2: 0 });
+  const fromRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
+  const toRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
 
   function normalizeDeltaDeg(delta: number): number {
     let d = ((delta + 180) % 360) - 180;
@@ -50,8 +52,12 @@ export default function Home() {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    const from = { a1: animA1, a2: animA2 };
-    const to = { a1: angle1Deg, a2: Math.min(Math.max(angle2Deg, -90), 90) };
+    const from = { a1: animA1, a2: animA2, a3: animA3 };
+    const to = {
+      a1: angle1Deg,
+      a2: Math.min(Math.max(angle2Deg, -90), 90),
+      a3: Math.min(Math.max(angle3Deg, -90), 90),
+    };
     fromRef.current = from;
     toRef.current = to;
     animStartRef.current = performance.now();
@@ -61,8 +67,10 @@ export default function Home() {
       const k = easeInOutCubic(t);
       const d1 = normalizeDeltaDeg(toRef.current.a1 - fromRef.current.a1);
       const d2 = normalizeDeltaDeg(toRef.current.a2 - fromRef.current.a2);
+      const d3 = normalizeDeltaDeg(toRef.current.a3 - fromRef.current.a3);
       setAnimA1(fromRef.current.a1 + d1 * k);
       setAnimA2(fromRef.current.a2 + d2 * k);
+      setAnimA3(fromRef.current.a3 + d3 * k);
       if (t < 1) rafRef.current = requestAnimationFrame(step);
       else rafRef.current = null;
     };
@@ -72,7 +80,7 @@ export default function Home() {
       rafRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [angle1Deg, angle2Deg]);
+  }, [angle1Deg, angle2Deg, angle3Deg]);
 
   return (
     <div className="relative w-screen h-screen">
@@ -103,6 +111,20 @@ export default function Home() {
             step={1}
             value={Math.min(Math.max(angle2Deg, -90), 90)}
             onChange={(e) => setAngle2Deg(Number(e.target.value))}
+          />
+        </div>
+        <div>
+          <label htmlFor="angle3" className="block mb-1">
+            Forearm pitch (deg): {Math.round(angle3Deg)}
+          </label>
+          <input
+            id="angle3"
+            type="range"
+            min={-90}
+            max={90}
+            step={1}
+            value={Math.min(Math.max(angle3Deg, -90), 90)}
+            onChange={(e) => setAngle3Deg(Number(e.target.value))}
           />
         </div>
       </div>
@@ -139,6 +161,7 @@ export default function Home() {
         <RobotArm
           angle1={(animA1 * Math.PI) / 180}
           angle2={(Math.min(Math.max(animA2, -90), 90) * Math.PI) / 180}
+          angle3={(Math.min(Math.max(animA3, -90), 90) * Math.PI) / 180}
         />
 
         <IkDebug target={spherePos} />
