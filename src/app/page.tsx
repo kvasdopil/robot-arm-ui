@@ -13,8 +13,12 @@ export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
   const tc1Ref = useRef<any>(null);
   const tc2Ref = useRef<any>(null);
+  const tc3Ref = useRef<any>(null);
+  const tc4Ref = useRef<any>(null);
   const dragging1Ref = useRef<boolean>(false);
   const dragging2Ref = useRef<boolean>(false);
+  const dragging3Ref = useRef<boolean>(false);
+  const dragging4Ref = useRef<boolean>(false);
   const [cameraPos, setCameraPos] = usePersistedState<[number, number, number]>(
     'camera-position',
     [10, 10, 10],
@@ -31,7 +35,15 @@ export default function Home() {
     'sphere2-position',
     [-2, 3, 2],
   );
-  const [activeTarget, setActiveTarget] = useState<1 | 2>(1);
+  const [sphere3Pos, setSphere3Pos] = usePersistedState<[number, number, number]>(
+    'sphere3-position',
+    [2, 2, 2],
+  );
+  const [sphere4Pos, setSphere4Pos] = usePersistedState<[number, number, number]>(
+    'sphere4-position',
+    [-2, 2, -2],
+  );
+  const [activeTarget, setActiveTarget] = useState<1 | 2 | 3 | 4>(1);
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
   const [angle3Deg, setAngle3Deg] = usePersistedState<number>('arm-angle3-deg', 0);
@@ -53,6 +65,10 @@ export default function Home() {
   const lastG1BonesRef = useRef<BonePoint[] | null>(null);
   const lastG2AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
   const lastG2BonesRef = useRef<BonePoint[] | null>(null);
+  const lastG3AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
+  const lastG3BonesRef = useRef<BonePoint[] | null>(null);
+  const lastG4AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
+  const lastG4BonesRef = useRef<BonePoint[] | null>(null);
 
   function startTrajectory() {
     if (trajectoryTimerRef.current != null) {
@@ -77,7 +93,7 @@ export default function Home() {
     }, 1300);
   }
 
-  function runIk(pos: [number, number, number], goal?: 1 | 2) {
+  function runIk(pos: [number, number, number], goal?: 1 | 2 | 3 | 4) {
     try {
       fetchAbortRef.current?.abort();
     } catch { }
@@ -107,6 +123,12 @@ export default function Home() {
           } else if (goal === 2) {
             lastG2AnglesRef.current = angles;
             lastG2BonesRef.current = bones;
+          } else if (goal === 3) {
+            lastG3AnglesRef.current = angles;
+            lastG3BonesRef.current = bones;
+          } else if (goal === 4) {
+            lastG4AnglesRef.current = angles;
+            lastG4BonesRef.current = bones;
           }
         },
       )
@@ -115,9 +137,9 @@ export default function Home() {
       });
   }
 
-  function applyGoal(goal: 1 | 2) {
-    const a = goal === 1 ? lastG1AnglesRef.current : lastG2AnglesRef.current;
-    const b = goal === 1 ? lastG1BonesRef.current : lastG2BonesRef.current;
+  function applyGoal(goal: 1 | 2 | 3 | 4) {
+    const a = goal === 1 ? lastG1AnglesRef.current : goal === 2 ? lastG2AnglesRef.current : goal === 3 ? lastG3AnglesRef.current : lastG4AnglesRef.current;
+    const b = goal === 1 ? lastG1BonesRef.current : goal === 2 ? lastG2BonesRef.current : goal === 3 ? lastG3BonesRef.current : lastG4BonesRef.current;
     if (!a || !b) return;
     setAngle1Deg(a.baseYawDeg);
     setAngle2Deg(Math.max(-90, Math.min(90, a.shoulderPitchDeg)));
@@ -126,17 +148,21 @@ export default function Home() {
     startTrajectory();
   }
 
-  function getGoalPos(goal: 1 | 2): [number, number, number] {
-    return goal === 1 ? spherePos : sphere2Pos;
+  function getGoalPos(goal: 1 | 2 | 3 | 4): [number, number, number] {
+    if (goal === 1) return spherePos;
+    if (goal === 2) return sphere2Pos;
+    if (goal === 3) return sphere3Pos;
+    return sphere4Pos;
   }
 
-  function hasGoalIk(goal: 1 | 2): boolean {
-    return goal === 1
-      ? !!lastG1AnglesRef.current && !!lastG1BonesRef.current
-      : !!lastG2AnglesRef.current && !!lastG2BonesRef.current;
+  function hasGoalIk(goal: 1 | 2 | 3 | 4): boolean {
+    if (goal === 1) return !!lastG1AnglesRef.current && !!lastG1BonesRef.current;
+    if (goal === 2) return !!lastG2AnglesRef.current && !!lastG2BonesRef.current;
+    if (goal === 3) return !!lastG3AnglesRef.current && !!lastG3BonesRef.current;
+    return !!lastG4AnglesRef.current && !!lastG4BonesRef.current;
   }
 
-  function activateGoal(goal: 1 | 2) {
+  function activateGoal(goal: 1 | 2 | 3 | 4) {
     setActiveTarget(goal);
     if (hasGoalIk(goal)) {
       applyGoal(goal);
@@ -210,6 +236,22 @@ export default function Home() {
         >
           2
         </button>
+        <button
+          type="button"
+          onClick={() => { activateGoal(3); }}
+          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          title="Apply last IK for goal 3"
+        >
+          3
+        </button>
+        <button
+          type="button"
+          onClick={() => { activateGoal(4); }}
+          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          title="Apply last IK for goal 4"
+        >
+          4
+        </button>
       </div>
       <div className="absolute left-4 top-4 z-10 rounded-md bg-white/80 dark:bg-black/60 backdrop-blur p-3 shadow text-sm space-y-2">
         <div>
@@ -260,80 +302,156 @@ export default function Home() {
         <color attach="background" args={['lightgray']} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 5, 5]} intensity={0.8} />
+        {/* Target 1 */}
         {activeTarget === 1 ? (
-          <>
-            <TransformControls
-              ref={tc1Ref}
-              mode="translate"
-              position={spherePos}
-              onMouseDown={() => {
-                if (orbitRef.current) orbitRef.current.enabled = false;
-                dragging1Ref.current = true;
-              }}
-              onChange={() => {
-                // no-op during drag; IK runs on mouse up only
-              }}
-              onMouseUp={() => {
-                if (orbitRef.current) orbitRef.current.enabled = true;
-                const obj = (tc1Ref.current?.object as Mesh | undefined) ?? undefined;
-                if (!obj) return;
-                const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
-                setSpherePos(pos);
-                runIk(pos, 1);
-                dragging1Ref.current = false;
-              }}
-            >
-              <mesh position={[0, 0, 0]}>
-                <sphereGeometry args={[0.25, 32, 32]} />
-                <meshStandardMaterial color="orange" />
-              </mesh>
-            </TransformControls>
-            {/* Inactive target 2 as plain mesh */}
-            <mesh
-              position={sphere2Pos}
-              onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(2); }}
-            >
-              <sphereGeometry args={[0.25, 32, 32]} />
-              <meshStandardMaterial color="#8a2be2" />
-            </mesh>
-          </>
-        ) : (
-          <>
-            {/* Inactive target 1 as plain mesh */}
-            <mesh
-              position={spherePos}
-              onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(1); }}
-            >
+          <TransformControls
+            ref={tc1Ref}
+            mode="translate"
+            position={spherePos}
+            onMouseDown={() => {
+              if (orbitRef.current) orbitRef.current.enabled = false;
+              dragging1Ref.current = true;
+            }}
+            onChange={() => {
+              // no-op during drag; IK runs on mouse up only
+            }}
+            onMouseUp={() => {
+              if (orbitRef.current) orbitRef.current.enabled = true;
+              const obj = (tc1Ref.current?.object as Mesh | undefined) ?? undefined;
+              if (!obj) return;
+              const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+              setSpherePos(pos);
+              runIk(pos, 1);
+              dragging1Ref.current = false;
+            }}
+          >
+            <mesh position={[0, 0, 0]}>
               <sphereGeometry args={[0.25, 32, 32]} />
               <meshStandardMaterial color="orange" />
             </mesh>
-            <TransformControls
-              ref={tc2Ref}
-              mode="translate"
-              position={sphere2Pos}
-              onMouseDown={() => {
-                if (orbitRef.current) orbitRef.current.enabled = false;
-                dragging2Ref.current = true;
-              }}
-              onChange={() => {
-                // no-op during drag; IK runs on mouse up only
-              }}
-              onMouseUp={() => {
-                if (orbitRef.current) orbitRef.current.enabled = true;
-                const obj = (tc2Ref.current?.object as Mesh | undefined) ?? undefined;
-                if (!obj) return;
-                const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
-                setSphere2Pos(pos);
-                runIk(pos, 2);
-                dragging2Ref.current = false;
-              }}
-            >
-              <mesh position={[0, 0, 0]}>
-                <sphereGeometry args={[0.25, 32, 32]} />
-                <meshStandardMaterial color="#8a2be2" />
-              </mesh>
-            </TransformControls>
-          </>
+          </TransformControls>
+        ) : (
+          <mesh
+            position={spherePos}
+            onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(1); }}
+          >
+            <sphereGeometry args={[0.25, 32, 32]} />
+            <meshStandardMaterial color="orange" />
+          </mesh>
+        )}
+
+        {/* Target 2 */}
+        {activeTarget === 2 ? (
+          <TransformControls
+            ref={tc2Ref}
+            mode="translate"
+            position={sphere2Pos}
+            onMouseDown={() => {
+              if (orbitRef.current) orbitRef.current.enabled = false;
+              dragging2Ref.current = true;
+            }}
+            onChange={() => {
+              // no-op during drag; IK runs on mouse up only
+            }}
+            onMouseUp={() => {
+              if (orbitRef.current) orbitRef.current.enabled = true;
+              const obj = (tc2Ref.current?.object as Mesh | undefined) ?? undefined;
+              if (!obj) return;
+              const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+              setSphere2Pos(pos);
+              runIk(pos, 2);
+              dragging2Ref.current = false;
+            }}
+          >
+            <mesh position={[0, 0, 0]}>
+              <sphereGeometry args={[0.25, 32, 32]} />
+              <meshStandardMaterial color="#8a2be2" />
+            </mesh>
+          </TransformControls>
+        ) : (
+          <mesh
+            position={sphere2Pos}
+            onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(2); }}
+          >
+            <sphereGeometry args={[0.25, 32, 32]} />
+            <meshStandardMaterial color="#8a2be2" />
+          </mesh>
+        )}
+
+        {/* Target 3 */}
+        {activeTarget === 3 ? (
+          <TransformControls
+            ref={tc3Ref}
+            mode="translate"
+            position={sphere3Pos}
+            onMouseDown={() => {
+              if (orbitRef.current) orbitRef.current.enabled = false;
+              dragging3Ref.current = true;
+            }}
+            onChange={() => {
+              // no-op during drag; IK runs on mouse up only
+            }}
+            onMouseUp={() => {
+              if (orbitRef.current) orbitRef.current.enabled = true;
+              const obj = (tc3Ref.current?.object as Mesh | undefined) ?? undefined;
+              if (!obj) return;
+              const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+              setSphere3Pos(pos);
+              runIk(pos, 3);
+              dragging3Ref.current = false;
+            }}
+          >
+            <mesh position={[0, 0, 0]}>
+              <sphereGeometry args={[0.25, 32, 32]} />
+              <meshStandardMaterial color="#00bcd4" />
+            </mesh>
+          </TransformControls>
+        ) : (
+          <mesh
+            position={sphere3Pos}
+            onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(3); }}
+          >
+            <sphereGeometry args={[0.25, 32, 32]} />
+            <meshStandardMaterial color="#00bcd4" />
+          </mesh>
+        )}
+
+        {/* Target 4 */}
+        {activeTarget === 4 ? (
+          <TransformControls
+            ref={tc4Ref}
+            mode="translate"
+            position={sphere4Pos}
+            onMouseDown={() => {
+              if (orbitRef.current) orbitRef.current.enabled = false;
+              dragging4Ref.current = true;
+            }}
+            onChange={() => {
+              // no-op during drag; IK runs on mouse up only
+            }}
+            onMouseUp={() => {
+              if (orbitRef.current) orbitRef.current.enabled = true;
+              const obj = (tc4Ref.current?.object as Mesh | undefined) ?? undefined;
+              if (!obj) return;
+              const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+              setSphere4Pos(pos);
+              runIk(pos, 4);
+              dragging4Ref.current = false;
+            }}
+          >
+            <mesh position={[0, 0, 0]}>
+              <sphereGeometry args={[0.25, 32, 32]} />
+              <meshStandardMaterial color="#4caf50" />
+            </mesh>
+          </TransformControls>
+        ) : (
+          <mesh
+            position={sphere4Pos}
+            onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(4); }}
+          >
+            <sphereGeometry args={[0.25, 32, 32]} />
+            <meshStandardMaterial color="#4caf50" />
+          </mesh>
         )}
 
         <RobotArm

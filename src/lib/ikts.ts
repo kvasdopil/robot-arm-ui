@@ -221,8 +221,8 @@ export function createRobotArmIkSolver(options: RobotArmIkOptions = {}): RobotAr
         forearmLen,
         'LOCAL',
         v3([0, 0, 1]),
-        90,
-        90,
+        135,
+        135,
         v3([0, 1, 0]),
     );
     chain.bones[4].name = 'forearm';
@@ -330,8 +330,8 @@ export function solveIkWithIkts(target: Vec3, options: RobotArmIkOptions = {}): 
                 constraint: {
                     kind: 'hinge',
                     axis: [0, 0, 1],
-                    cwDeg: 90,
-                    acwDeg: 90,
+                    cwDeg: 135,
+                    acwDeg: 135,
                     referenceAxis: [0, 1, 0],
                     space: 'LOCAL',
                 },

@@ -96,7 +96,7 @@ def build_chain(cfg):
             origin_translation=[0.0, 0.0, 0.0],
             origin_orientation=[0.0, 0.0, 0.0],
             rotation=[1.0, 0.0, 0.0],
-            bounds=(-math.pi/2, math.pi/2),
+            bounds=(-3*math.pi/4, 3*math.pi/4),
             joint_type="revolute",
         ),
         # Forearm link: fixed +Y
@@ -161,7 +161,7 @@ def main():
         "angles": {
             "baseYawDeg": base_yaw,
             "shoulderPitchDeg": clamp(shoulder_pitch, -90.0, 90.0),
-            "forearmPitchDeg": clamp(forearm_pitch, -90.0, 90.0),
+            "forearmPitchDeg": clamp(forearm_pitch, -135.0, 135.0),
         },
         "bones": bones,
         "effector": points[-1],
