@@ -78,7 +78,7 @@ export default function Home() {
   function runIk(pos: [number, number, number], goalIndex?: number) {
     try {
       fetchAbortRef.current?.abort();
-    } catch {}
+    } catch { }
     const controller = new AbortController();
     fetchAbortRef.current = controller;
     fetch('/api/ik', {
