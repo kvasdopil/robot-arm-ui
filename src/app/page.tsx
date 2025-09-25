@@ -7,7 +7,8 @@ import { DoubleSide, Mesh } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import RobotArm from '@/components/RobotArm';
-import { computeIkAnglesFabrik, type IkConfig } from '@/lib/ik';
+import { extractYawPitchDegrees, solveIkWithIkts } from '@/lib/ikts';
+import IkDebug from '@/components/IkDebug';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -26,22 +27,13 @@ export default function Home() {
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
 
-  function computeIkAngles(target: [number, number, number]) {
-    const config: IkConfig = {
-      basePosition: [0, -1, 0],
-      elbowOffsetFromBaseLocal: [4, 3, 0],
-      endEffectorLength: 10,
-      pitchMinDeg: -90,
-      pitchMaxDeg: 90,
-    };
-    return computeIkAnglesFabrik(target, { yawDeg: angle1Deg, pitchDeg: angle2Deg }, config);
-  }
-
   return (
     <div className="relative w-screen h-screen">
       <div className="absolute left-4 top-4 z-10 rounded-md bg-white/80 dark:bg-black/60 backdrop-blur p-3 shadow text-sm space-y-2">
         <div>
-          <label htmlFor="angle1" className="block mb-1">Base yaw (deg): {Math.round(angle1Deg)}</label>
+          <label htmlFor="angle1" className="block mb-1">
+            Base yaw (deg): {Math.round(angle1Deg)}
+          </label>
           <input
             id="angle1"
             type="range"
@@ -53,7 +45,9 @@ export default function Home() {
           />
         </div>
         <div>
-          <label htmlFor="angle2" className="block mb-1">Shoulder pitch (deg): {Math.round(angle2Deg)}</label>
+          <label htmlFor="angle2" className="block mb-1">
+            Shoulder pitch (deg): {Math.round(angle2Deg)}
+          </label>
           <input
             id="angle2"
             type="range"
@@ -83,8 +77,9 @@ export default function Home() {
             const obj = (e as unknown as { target: { object: Mesh } }).target.object;
             const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
             setSpherePos(pos);
-            const { yawDeg, pitchDeg } = computeIkAngles(pos);
-            setAngle1Deg(yawDeg);
+            const solved = solveIkWithIkts(pos);
+            const { yawDeg, pitchDeg } = extractYawPitchDegrees(solved);
+            setAngle1Deg(-yawDeg);
             setAngle2Deg(Math.max(-90, Math.min(90, pitchDeg)));
           }}
         >
@@ -94,7 +89,12 @@ export default function Home() {
           </mesh>
         </TransformControls>
 
-        <RobotArm angle1={(angle1Deg * Math.PI) / 180} angle2={(Math.min(Math.max(angle2Deg, -90), 90) * Math.PI) / 180} />
+        <RobotArm
+          angle1={(angle1Deg * Math.PI) / 180}
+          angle2={(Math.min(Math.max(angle2Deg, -90), 90) * Math.PI) / 180}
+        />
+
+        <IkDebug target={spherePos} />
 
         <Grid cellSize={1} sectionSize={10} infiniteGrid side={DoubleSide} />
         <OrbitControls

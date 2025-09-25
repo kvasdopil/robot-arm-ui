@@ -3,32 +3,32 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export function usePersistedState<T>(key: string, defaultValue: T): [T, (next: T) => void] {
+  // Initialize with defaultValue on both server and first client render to avoid hydration mismatches
   const [value, setValue] = useState<T>(defaultValue);
-  const [initialized, setInitialized] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
+  // After mount, read from localStorage and update state
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const raw = window.localStorage.getItem(key);
-      if (raw != null) {
-        setValue(JSON.parse(raw) as T);
-      }
+      if (raw != null) setValue(JSON.parse(raw) as T);
     } catch {
       // ignore read errors
     } finally {
-      setInitialized(true);
+      setHydrated(true);
     }
   }, [key]);
 
+  // Only write after we've attempted hydration to avoid overwriting existing values
   useEffect(() => {
-    if (!initialized) return;
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !hydrated) return;
     try {
       window.localStorage.setItem(key, JSON.stringify(value));
     } catch {
       // ignore write errors
     }
-  }, [key, value, initialized]);
+  }, [key, value, hydrated]);
 
   const update = useCallback((next: T) => {
     setValue(next);
