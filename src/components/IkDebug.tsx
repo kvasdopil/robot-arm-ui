@@ -1,10 +1,12 @@
 'use client';
 
 import { Line } from '@react-three/drei';
-import { solveIkWithIkts } from '@/lib/ikts';
+import { createRobotArmIkSolver } from '@/lib/ikts';
+import { useMemo } from 'react';
 
 export function IkDebug({ target }: { target: [number, number, number] }) {
-  const result = solveIkWithIkts(target);
+  const solver = useMemo(() => createRobotArmIkSolver(), []);
+  const result = solver.update(target);
   const points: [number, number, number][] = result.bones.flatMap((b, i) =>
     i === 0 ? [b.start, b.end] : [b.end],
   );

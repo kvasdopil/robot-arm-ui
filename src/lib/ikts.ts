@@ -154,6 +154,76 @@ export function solveIkChain(config: ChainConfig, target: Vec3): RobotArmIkResul
     return { chain, structure, bones, effector };
 }
 
+export type RobotArmIkSolver = {
+    update: (target: Vec3) => RobotArmIkResult;
+    getResult: () => RobotArmIkResult;
+};
+
+export function createRobotArmIkSolver(options: RobotArmIkOptions = {}): RobotArmIkSolver {
+    const baseLen = options.baseLength ?? 3;
+    const shoulderLen = options.shoulderLength ?? 4;
+    const ankleLen = options.ankleLength ?? 10;
+
+    const chain = new IK.Chain3D();
+
+    // Base
+    const baseBone = new IK.Bone3D(v3([0, -1, 0]), v3([0, -1 + baseLen, 0]));
+    chain.addBone(baseBone);
+    chain.setFixedBaseMode(true);
+    chain.setRotorBaseboneConstraint('GLOBAL', v3([0, 1, 0]), 0);
+
+    // Shoulder
+    chain.addConsecutiveHingedBone(
+        v3([-1, 0, 0]),
+        shoulderLen,
+        'LOCAL',
+        v3([0, 0, 1]),
+        180,
+        180,
+        v3([-1, 0, 0]),
+    );
+
+    // Ankle
+    chain.addConsecutiveHingedBone(
+        v3([0, 1, 0]),
+        ankleLen,
+        'LOCAL',
+        v3([0, 0, 1]),
+        90,
+        90,
+        v3([0, 1, 0]),
+    );
+
+    // Tuning for smoother/minimal changes
+    chain.setMaxIterationAttempts(15);
+    chain.setMinIterationChange(0.0005);
+    chain.setSolveDistanceThreshold(0.001);
+
+    const structure = new IK.Structure3D();
+    const tgt = v3([0, 0, 0]);
+    structure.add(chain, tgt);
+
+    const buildResult = (): RobotArmIkResult => {
+        const bones: BoneWorldPose[] = chain.bones.map((b, idx) => ({
+            name: idx === 0 ? 'base' : idx === 1 ? 'shoulder' : 'ankle',
+            start: toTuple(b.start),
+            end: toTuple(b.end),
+        }));
+        const effector = toTuple(chain.getEffectorLocation());
+        return { chain, structure, bones, effector };
+    };
+
+    const update = (target: Vec3): RobotArmIkResult => {
+        tgt.set(target[0], target[1], target[2]);
+        structure.update();
+        return buildResult();
+    };
+
+    const getResult = (): RobotArmIkResult => buildResult();
+
+    return { update, getResult };
+}
+
 /**
  * Convenience function: build the specified 3-bone robot arm and solve.
  * - base: (0,0,0)->(0,3,0), freely rotates around Y
