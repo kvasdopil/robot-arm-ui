@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
 import { DoubleSide, Mesh } from 'three';
@@ -26,6 +26,53 @@ export default function Home() {
   );
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
+
+  // Animated angles (tween to target in 0.5s)
+  const [animA1, setAnimA1] = useState<number>(0);
+  const [animA2, setAnimA2] = useState<number>(0);
+  const rafRef = useRef<number | null>(null);
+  const animStartRef = useRef<number>(0);
+  const fromRef = useRef<{ a1: number; a2: number }>({ a1: 0, a2: 0 });
+  const toRef = useRef<{ a1: number; a2: number }>({ a1: 0, a2: 0 });
+
+  function normalizeDeltaDeg(delta: number): number {
+    let d = ((delta + 180) % 360) - 180;
+    if (d < -180) d += 360;
+    return d;
+  }
+
+  function easeInOutCubic(t: number): number {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  useEffect(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const from = { a1: animA1, a2: animA2 };
+    const to = { a1: angle1Deg, a2: Math.min(Math.max(angle2Deg, -90), 90) };
+    fromRef.current = from;
+    toRef.current = to;
+    animStartRef.current = performance.now();
+    const duration = 500; // ms
+    const step = (now: number) => {
+      const t = Math.min(1, (now - animStartRef.current) / duration);
+      const k = easeInOutCubic(t);
+      const d1 = normalizeDeltaDeg(toRef.current.a1 - fromRef.current.a1);
+      const d2 = normalizeDeltaDeg(toRef.current.a2 - fromRef.current.a2);
+      setAnimA1(fromRef.current.a1 + d1 * k);
+      setAnimA2(fromRef.current.a2 + d2 * k);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+      else rafRef.current = null;
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [angle1Deg, angle2Deg]);
 
   return (
     <div className="relative w-screen h-screen">
@@ -79,7 +126,7 @@ export default function Home() {
             setSpherePos(pos);
             const solved = solveIkWithIkts(pos);
             const { yawDeg, pitchDeg } = extractYawPitchDegrees(solved);
-            setAngle1Deg(-yawDeg);
+            setAngle1Deg(yawDeg);
             setAngle2Deg(Math.max(-90, Math.min(90, pitchDeg)));
           }}
         >
@@ -90,8 +137,8 @@ export default function Home() {
         </TransformControls>
 
         <RobotArm
-          angle1={(angle1Deg * Math.PI) / 180}
-          angle2={(Math.min(Math.max(angle2Deg, -90), 90) * Math.PI) / 180}
+          angle1={(animA1 * Math.PI) / 180}
+          angle2={(Math.min(Math.max(animA2, -90), 90) * Math.PI) / 180}
         />
 
         <IkDebug target={spherePos} />

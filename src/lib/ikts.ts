@@ -1,6 +1,7 @@
 'use client';
 
 import * as IK from 'ikts';
+import { Vector3, Quaternion, Euler, MathUtils } from 'three';
 
 export type Vec3 = [number, number, number];
 
@@ -280,6 +281,31 @@ export function solveIkWithIkts(target: Vec3, options: RobotArmIkOptions = {}): 
     return solveIkChain(chainConfig, target);
 }
 
+
+function angleBetween3D(a: Vec3, b: Vec3, ref: Vec3) {
+    // a, b, ref = [x, y, z]
+    // `ref` is the reference axis (e.g. [0,0,1] for XY plane signed angle)
+
+    const dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+    const cross = [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+    ];
+
+    const crossMag = Math.sqrt(cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2);
+    const angleRad = Math.atan2(crossMag, dot); // unsigned in [0..π]
+
+    // Determine sign using reference axis
+    const sign = Math.sign(
+        ref[0] * cross[0] + ref[1] * cross[1] + ref[2] * cross[2]
+    );
+
+    return angleRad * sign;
+}
+
+
 export function extractYawPitchDegrees(result: RobotArmIkResult): {
     yawDeg: number;
     pitchDeg: number;
@@ -297,25 +323,38 @@ export function extractYawPitchDegrees(result: RobotArmIkResult): {
     const sDirX = sdx / sl;
     const sDirZ = sdz / sl;
 
-    // Yaw where 0 means shoulder points along +X (matches RobotArm default)
-    const yawRad = Math.atan2(sDirZ, sDirX);
+    // // Yaw using three.js quaternion/euler between default +X and current shoulder direction
+    // const defaultDir = new Vector3(1, 0, 0);
+    // const shoulderDir = new Vector3(sdx, sdy, sdz);
+    // const q = new Quaternion().setFromUnitVectors(defaultDir, shoulderDir);
+    // const e = new Euler().setFromQuaternion(q, 'YXZ');
+    // console.log('e', e);
+    const yawRad = angleBetween3D([1, 0, 0], [sdx, sdy, sdz], [0, 1, 0]);
 
     const adx = ankle.end.x - ankle.start.x;
     const ady = ankle.end.y - ankle.start.y;
     const adz = ankle.end.z - ankle.start.z;
     const al = Math.hypot(adx, ady, adz) || 1;
-    const aDirX = adx / al;
-    const aDirY = ady / al;
-    const aDirZ = adz / al;
+    const aDir = new Vector3(adx / al, ady / al, adz / al);
 
-    // Local +Z axis after yaw rotation
-    const zLocalX = Math.sin(yawRad);
-    const zLocalZ = Math.cos(yawRad);
-    const zDot = aDirX * zLocalX + aDirZ * zLocalZ;
+    // Shoulder axis (previous bone direction) is the hinge axis for joint 2
+    const shoulderAxis = new Vector3(sdx / sl, sdy / sl, sdz / sl);
 
-    const cosPitch = Math.max(-1, Math.min(1, aDirY));
-    const pitchAbs = Math.acos(cosPitch);
-    const pitchRad = (zDot >= 0 ? 1 : -1) * pitchAbs;
+    // Build world reference direction for ankle zero using LOCAL hinge reference [0,1,0]
+    const qShoulder = new Quaternion().setFromUnitVectors(new Vector3(1, 0, 0), shoulderAxis);
+    const refWorld = new Vector3(0, 1, 0).applyQuaternion(qShoulder).normalize();
+
+    // Project both reference and ankle directions onto plane perpendicular to the hinge axis
+    const projOntoPlane = (v: Vector3, axis: Vector3) => v.clone().sub(axis.clone().multiplyScalar(v.dot(axis))).normalize();
+    const refProj = projOntoPlane(refWorld, shoulderAxis);
+    const ankleProj = projOntoPlane(aDir, shoulderAxis);
+
+    // Signed angle in that plane, around the hinge axis
+    const pitchRad = angleBetween3D(
+        [refProj.x, refProj.y, refProj.z],
+        [ankleProj.x, ankleProj.y, ankleProj.z],
+        [shoulderAxis.x, shoulderAxis.y, shoulderAxis.z],
+    );
 
     const yawDeg = (yawRad * 180) / Math.PI;
     const pitchDeg = (pitchRad * 180) / Math.PI;
