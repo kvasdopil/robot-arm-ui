@@ -2,8 +2,8 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
-import { DoubleSide, Mesh } from 'three';
+import { Grid, OrbitControls, TransformControls, Line } from '@react-three/drei';
+import { DoubleSide, Mesh, Object3D, Vector3 } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import RobotArm from '@/components/RobotArm';
@@ -36,7 +36,7 @@ export default function Home() {
   const [angle3Deg, setAngle3Deg] = usePersistedState<number>('arm-angle3-deg', 0);
   const [serverBones, setServerBones] = useState<BonePoint[] | null>(null);
 
-  // Animated angles (tween to target in 0.5s)
+  // Animated angles (tween to target in 1s)
   const [animA1, setAnimA1] = useState<number>(0);
   const [animA2, setAnimA2] = useState<number>(0);
   const [animA3, setAnimA3] = useState<number>(0);
@@ -45,6 +45,9 @@ export default function Home() {
   const fromRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
   const toRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const endEffectorRef = useRef<Object3D | null>(null);
+  const trajectoryTimerRef = useRef<number | null>(null);
+  const [trajectoryPoints, setTrajectoryPoints] = useState<[number, number, number][]>([]);
   const lastG1AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
   const lastG1BonesRef = useRef<BonePoint[] | null>(null);
   const lastG2AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
@@ -73,6 +76,28 @@ export default function Home() {
           setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
           setAngle3Deg(Math.max(-90, Math.min(90, angles.forearmPitchDeg)));
           setServerBones(bones);
+          // Start trajectory sampling for this move and discard previous
+          if (trajectoryTimerRef.current != null) {
+            clearInterval(trajectoryTimerRef.current as unknown as number);
+            trajectoryTimerRef.current = null;
+          }
+          setTrajectoryPoints([]);
+          const id = window.setInterval(() => {
+            const eff = endEffectorRef.current;
+            if (!eff) return;
+            const v = new Vector3();
+            eff.getWorldPosition(v);
+            const p: [number, number, number] = [v.x, v.y, v.z];
+            setTrajectoryPoints((pts) => [...pts, p]);
+          }, 100) as unknown as number;
+          trajectoryTimerRef.current = id;
+          // Stop sampling shortly after the tween completes
+          window.setTimeout(() => {
+            if (trajectoryTimerRef.current != null) {
+              clearInterval(trajectoryTimerRef.current as unknown as number);
+              trajectoryTimerRef.current = null;
+            }
+          }, 1300);
           if (goal === 1) {
             lastG1AnglesRef.current = angles;
             lastG1BonesRef.current = bones;
@@ -121,7 +146,7 @@ export default function Home() {
     fromRef.current = from;
     toRef.current = to;
     animStartRef.current = performance.now();
-    const duration = 500; // ms
+    const duration = 1000; // ms
     const step = (now: number) => {
       const t = Math.min(1, (now - animStartRef.current) / duration);
       const k = easeInOutCubic(t);
@@ -270,9 +295,14 @@ export default function Home() {
           angle1={(animA1 * Math.PI) / 180}
           angle2={(Math.min(Math.max(animA2, -90), 90) * Math.PI) / 180}
           angle3={(Math.min(Math.max(animA3, -90), 90) * Math.PI) / 180}
+          endEffectorRef={endEffectorRef}
         />
 
         {serverBones && <IkDebug bones={serverBones} />}
+
+        {trajectoryPoints.length > 1 && (
+          <Line points={trajectoryPoints} color="purple" lineWidth={2} dashed={false} transparent opacity={0.8} />
+        )}
 
         <Grid cellSize={1} sectionSize={10} infiniteGrid side={DoubleSide} />
         <OrbitControls

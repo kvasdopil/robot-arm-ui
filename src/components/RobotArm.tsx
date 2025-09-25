@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
+import type { Object3D } from 'three';
 
 type Vec3 = [number, number, number];
 
@@ -26,7 +27,7 @@ function AxisRotation({
     );
 }
 
-export function RobotArm({ angle1 = 0, angle2 = 0, angle3 = 0 }: { angle1?: number; angle2?: number; angle3?: number }) {
+export function RobotArm({ angle1 = 0, angle2 = 0, angle3 = 0, endEffectorRef }: { angle1?: number; angle2?: number; angle3?: number; endEffectorRef?: React.MutableRefObject<Object3D | null> }) {
     return (
         <group>
             {/* Base segment: cylinder 20x20x2 cm at (0,0,-1) */}
@@ -68,6 +69,8 @@ export function RobotArm({ angle1 = 0, angle2 = 0, angle3 = 0 }: { angle1?: numb
                                     <cylinderGeometry args={[2, 2, 10, 24]} />
                                     <meshStandardMaterial color="#00aa00" transparent opacity={0.35} depthWrite={false} />
                                 </mesh>
+                                {/* End effector marker at forearm tip (+Y) */}
+                                <group position={[0, 10, 0]} ref={endEffectorRef as any} />
                             </AxisRotation>
                         </group>
                     </AxisRotation>
