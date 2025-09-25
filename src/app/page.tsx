@@ -31,6 +31,7 @@ export default function Home() {
     'sphere2-position',
     [-2, 3, 2],
   );
+  const [activeTarget, setActiveTarget] = useState<1 | 2>(1);
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
   const [angle3Deg, setAngle3Deg] = usePersistedState<number>('arm-angle3-deg', 0);
@@ -53,6 +54,29 @@ export default function Home() {
   const lastG2AnglesRef = useRef<{ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null>(null);
   const lastG2BonesRef = useRef<BonePoint[] | null>(null);
 
+  function startTrajectory() {
+    if (trajectoryTimerRef.current != null) {
+      clearInterval(trajectoryTimerRef.current as unknown as number);
+      trajectoryTimerRef.current = null;
+    }
+    setTrajectoryPoints([]);
+    const id = window.setInterval(() => {
+      const eff = endEffectorRef.current;
+      if (!eff) return;
+      const v = new Vector3();
+      eff.getWorldPosition(v);
+      const p: [number, number, number] = [v.x, v.y, v.z];
+      setTrajectoryPoints((pts) => [...pts, p]);
+    }, 100) as unknown as number;
+    trajectoryTimerRef.current = id;
+    window.setTimeout(() => {
+      if (trajectoryTimerRef.current != null) {
+        clearInterval(trajectoryTimerRef.current as unknown as number);
+        trajectoryTimerRef.current = null;
+      }
+    }, 1300);
+  }
+
   function runIk(pos: [number, number, number], goal?: 1 | 2) {
     try {
       fetchAbortRef.current?.abort();
@@ -74,30 +98,9 @@ export default function Home() {
           const { angles, bones } = data;
           setAngle1Deg(angles.baseYawDeg);
           setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
-          setAngle3Deg(Math.max(-90, Math.min(90, angles.forearmPitchDeg)));
+          setAngle3Deg(Math.max(-135, Math.min(135, angles.forearmPitchDeg)));
           setServerBones(bones);
-          // Start trajectory sampling for this move and discard previous
-          if (trajectoryTimerRef.current != null) {
-            clearInterval(trajectoryTimerRef.current as unknown as number);
-            trajectoryTimerRef.current = null;
-          }
-          setTrajectoryPoints([]);
-          const id = window.setInterval(() => {
-            const eff = endEffectorRef.current;
-            if (!eff) return;
-            const v = new Vector3();
-            eff.getWorldPosition(v);
-            const p: [number, number, number] = [v.x, v.y, v.z];
-            setTrajectoryPoints((pts) => [...pts, p]);
-          }, 100) as unknown as number;
-          trajectoryTimerRef.current = id;
-          // Stop sampling shortly after the tween completes
-          window.setTimeout(() => {
-            if (trajectoryTimerRef.current != null) {
-              clearInterval(trajectoryTimerRef.current as unknown as number);
-              trajectoryTimerRef.current = null;
-            }
-          }, 1300);
+          startTrajectory();
           if (goal === 1) {
             lastG1AnglesRef.current = angles;
             lastG1BonesRef.current = bones;
@@ -118,8 +121,29 @@ export default function Home() {
     if (!a || !b) return;
     setAngle1Deg(a.baseYawDeg);
     setAngle2Deg(Math.max(-90, Math.min(90, a.shoulderPitchDeg)));
-    setAngle3Deg(Math.max(-90, Math.min(90, a.forearmPitchDeg)));
+    setAngle3Deg(Math.max(-135, Math.min(135, a.forearmPitchDeg)));
     setServerBones(b);
+    startTrajectory();
+  }
+
+  function getGoalPos(goal: 1 | 2): [number, number, number] {
+    return goal === 1 ? spherePos : sphere2Pos;
+  }
+
+  function hasGoalIk(goal: 1 | 2): boolean {
+    return goal === 1
+      ? !!lastG1AnglesRef.current && !!lastG1BonesRef.current
+      : !!lastG2AnglesRef.current && !!lastG2BonesRef.current;
+  }
+
+  function activateGoal(goal: 1 | 2) {
+    setActiveTarget(goal);
+    if (hasGoalIk(goal)) {
+      applyGoal(goal);
+    } else {
+      const pos = getGoalPos(goal);
+      runIk(pos, goal);
+    }
   }
 
   function normalizeDeltaDeg(delta: number): number {
@@ -141,7 +165,7 @@ export default function Home() {
     const to = {
       a1: angle1Deg,
       a2: Math.min(Math.max(angle2Deg, -90), 90),
-      a3: Math.min(Math.max(angle3Deg, -90), 90),
+      a3: Math.min(Math.max(angle3Deg, -135), 135),
     };
     fromRef.current = from;
     toRef.current = to;
@@ -172,7 +196,7 @@ export default function Home() {
       <div className="flex items-center gap-2 absolute right-4 top-4 z-10 flex-row">
         <button
           type="button"
-          onClick={() => applyGoal(1)}
+          onClick={() => { activateGoal(1); }}
           className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
           title="Apply last IK for goal 1"
         >
@@ -180,7 +204,7 @@ export default function Home() {
         </button>
         <button
           type="button"
-          onClick={() => applyGoal(2)}
+          onClick={() => { activateGoal(2); }}
           className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
           title="Apply last IK for goal 2"
         >
@@ -223,10 +247,10 @@ export default function Home() {
           <input
             id="angle3"
             type="range"
-            min={-90}
-            max={90}
+            min={-135}
+            max={135}
             step={1}
-            value={Math.min(Math.max(angle3Deg, -90), 90)}
+            value={Math.min(Math.max(angle3Deg, -135), 135)}
             onChange={(e) => setAngle3Deg(Number(e.target.value))}
           />
         </div>
@@ -236,65 +260,86 @@ export default function Home() {
         <color attach="background" args={['lightgray']} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 5, 5]} intensity={0.8} />
-
-        <TransformControls
-          ref={tc1Ref}
-          mode="translate"
-          position={spherePos}
-          onMouseDown={() => {
-            if (orbitRef.current) orbitRef.current.enabled = false;
-            dragging1Ref.current = true;
-          }}
-          onChange={() => {
-            // no-op during drag; IK runs on mouse up only
-          }}
-          onMouseUp={() => {
-            if (orbitRef.current) orbitRef.current.enabled = true;
-            const obj = (tc1Ref.current?.object as Mesh | undefined) ?? undefined;
-            if (!obj) return;
-            const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
-            setSpherePos(pos);
-            runIk(pos, 1);
-            dragging1Ref.current = false;
-          }}
-        >
-          <mesh position={[0, 0, 0]}>
-            <sphereGeometry args={[0.25, 32, 32]} />
-            <meshStandardMaterial color="orange" />
-          </mesh>
-        </TransformControls>
-
-        <TransformControls
-          ref={tc2Ref}
-          mode="translate"
-          position={sphere2Pos}
-          onMouseDown={() => {
-            if (orbitRef.current) orbitRef.current.enabled = false;
-            dragging2Ref.current = true;
-          }}
-          onChange={() => {
-            // no-op during drag; IK runs on mouse up only
-          }}
-          onMouseUp={() => {
-            if (orbitRef.current) orbitRef.current.enabled = true;
-            const obj = (tc2Ref.current?.object as Mesh | undefined) ?? undefined;
-            if (!obj) return;
-            const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
-            setSphere2Pos(pos);
-            runIk(pos, 2);
-            dragging2Ref.current = false;
-          }}
-        >
-          <mesh position={[0, 0, 0]}>
-            <sphereGeometry args={[0.25, 32, 32]} />
-            <meshStandardMaterial color="#8a2be2" />
-          </mesh>
-        </TransformControls>
+        {activeTarget === 1 ? (
+          <>
+            <TransformControls
+              ref={tc1Ref}
+              mode="translate"
+              position={spherePos}
+              onMouseDown={() => {
+                if (orbitRef.current) orbitRef.current.enabled = false;
+                dragging1Ref.current = true;
+              }}
+              onChange={() => {
+                // no-op during drag; IK runs on mouse up only
+              }}
+              onMouseUp={() => {
+                if (orbitRef.current) orbitRef.current.enabled = true;
+                const obj = (tc1Ref.current?.object as Mesh | undefined) ?? undefined;
+                if (!obj) return;
+                const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+                setSpherePos(pos);
+                runIk(pos, 1);
+                dragging1Ref.current = false;
+              }}
+            >
+              <mesh position={[0, 0, 0]}>
+                <sphereGeometry args={[0.25, 32, 32]} />
+                <meshStandardMaterial color="orange" />
+              </mesh>
+            </TransformControls>
+            {/* Inactive target 2 as plain mesh */}
+            <mesh
+              position={sphere2Pos}
+              onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(2); }}
+            >
+              <sphereGeometry args={[0.25, 32, 32]} />
+              <meshStandardMaterial color="#8a2be2" />
+            </mesh>
+          </>
+        ) : (
+          <>
+            {/* Inactive target 1 as plain mesh */}
+            <mesh
+              position={spherePos}
+              onPointerDown={(e) => { (e as any).stopPropagation(); activateGoal(1); }}
+            >
+              <sphereGeometry args={[0.25, 32, 32]} />
+              <meshStandardMaterial color="orange" />
+            </mesh>
+            <TransformControls
+              ref={tc2Ref}
+              mode="translate"
+              position={sphere2Pos}
+              onMouseDown={() => {
+                if (orbitRef.current) orbitRef.current.enabled = false;
+                dragging2Ref.current = true;
+              }}
+              onChange={() => {
+                // no-op during drag; IK runs on mouse up only
+              }}
+              onMouseUp={() => {
+                if (orbitRef.current) orbitRef.current.enabled = true;
+                const obj = (tc2Ref.current?.object as Mesh | undefined) ?? undefined;
+                if (!obj) return;
+                const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
+                setSphere2Pos(pos);
+                runIk(pos, 2);
+                dragging2Ref.current = false;
+              }}
+            >
+              <mesh position={[0, 0, 0]}>
+                <sphereGeometry args={[0.25, 32, 32]} />
+                <meshStandardMaterial color="#8a2be2" />
+              </mesh>
+            </TransformControls>
+          </>
+        )}
 
         <RobotArm
           angle1={(animA1 * Math.PI) / 180}
           angle2={(Math.min(Math.max(animA2, -90), 90) * Math.PI) / 180}
-          angle3={(Math.min(Math.max(animA3, -90), 90) * Math.PI) / 180}
+          angle3={(Math.min(Math.max(animA3, -135), 135) * Math.PI) / 180}
           endEffectorRef={endEffectorRef}
         />
 
