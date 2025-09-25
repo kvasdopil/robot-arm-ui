@@ -1,4 +1,4 @@
-'use client';
+
 
 import * as IK from 'ikts';
 import { Vector3, Quaternion, Euler, MathUtils } from 'three';

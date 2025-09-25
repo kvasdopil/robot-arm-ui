@@ -7,8 +7,7 @@ import { DoubleSide, Mesh } from 'three';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import RobotArm from '@/components/RobotArm';
-import { extractYawPitchDegrees, solveIkWithIkts } from '@/lib/ikts';
-import IkDebug from '@/components/IkDebug';
+import IkDebug, { BonePoint } from '@/components/IkDebug';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -27,6 +26,7 @@ export default function Home() {
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
   const [angle3Deg, setAngle3Deg] = usePersistedState<number>('arm-angle3-deg', 0);
+  const [serverBones, setServerBones] = useState<BonePoint[] | null>(null);
 
   // Animated angles (tween to target in 0.5s)
   const [animA1, setAnimA1] = useState<number>(0);
@@ -146,13 +146,23 @@ export default function Home() {
             const obj = (e as unknown as { target: { object: Mesh } }).target.object;
             const pos: [number, number, number] = [obj.position.x, obj.position.y, obj.position.z];
             setSpherePos(pos);
-            const solved = solveIkWithIkts(pos, { ankle2Length: 4, forearmLength: 10 });
-            const { yawDeg, pitchDeg, forearmDeg } = extractYawPitchDegrees(solved);
-            setAngle1Deg(yawDeg);
-            setAngle2Deg(Math.max(-90, Math.min(90, pitchDeg)));
-            if (typeof forearmDeg === 'number' && Number.isFinite(forearmDeg)) {
-              setAngle3Deg(Math.max(-90, Math.min(90, forearmDeg)));
-            }
+            // Call backend IK
+            fetch('/api/ik', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ target: pos }),
+            })
+              .then((r) => r.json())
+              .then((data: { angles: { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number }; bones: BonePoint[] }) => {
+                const { angles, bones } = data;
+                setAngle1Deg(angles.baseYawDeg);
+                setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
+                setAngle3Deg(Math.max(-90, Math.min(90, angles.forearmPitchDeg)));
+                setServerBones(bones);
+              })
+              .catch(() => {
+                // fall back: keep current angles
+              });
           }}
         >
           <mesh position={[0, 0, 0]}>
@@ -167,7 +177,7 @@ export default function Home() {
           angle3={(Math.min(Math.max(animA3, -90), 90) * Math.PI) / 180}
         />
 
-        <IkDebug target={spherePos} />
+        {serverBones && <IkDebug bones={serverBones} />}
 
         <Grid cellSize={1} sectionSize={10} infiniteGrid side={DoubleSide} />
         <OrbitControls
