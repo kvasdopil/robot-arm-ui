@@ -10,6 +10,10 @@ except Exception as e:
     print(json.dumps({"error": "ikpy not available", "details": str(e)}))
     sys.exit(1)
 
+# Optional Robotics Toolbox (for ctraj / SE3 interpolation) – import lazily in main
+SE3 = None  # type: ignore
+ctraj = None  # type: ignore
+
 
 def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
@@ -121,6 +125,8 @@ def main():
     origin = payload.get("origin")
     fractions = payload.get("fractions")
     cfg = payload.get("config", {})
+    # ctraj required; no linear fallback
+    ctraj_steps = payload.get("ctrajSteps")
     if not isinstance(target, list) or len(target) != 3:
         print(json.dumps({"error": "Invalid target"}))
         sys.exit(1)
@@ -151,13 +157,41 @@ def main():
         forearm_pitch_loc = to_deg(ik[7])
         return ({
             "angles": {
-                "baseYawDeg": base_yaw_loc,
+                "baseYawDeg": clamp(base_yaw_loc, -180.0, 180.0),
                 "shoulderPitchDeg": clamp(shoulder_pitch_loc, -90.0, 90.0),
                 "forearmPitchDeg": clamp(forearm_pitch_loc, -135.0, 135.0),
             },
             "bones": bones_loc,
             "effector": pts[-1],
         }, ik)
+
+    # Prefer continuity: evaluate multiple initial guesses and choose solution closest to prev_ik
+    def solve_pose_prefer_continuity(target_pos, prev_ik_vec):
+        # Base candidate: previous ik
+        candidates = []
+        base = list(prev_ik_vec) if isinstance(prev_ik_vec, list) and len(prev_ik_vec) == len(chain.links) else [0.0 for _ in chain.links]
+        candidates.append(base)
+        # Nudge shoulder/forearm up/down to escape wrong basin if needed
+        for delta in (-0.5, 0.5, -1.0, 1.0):
+            alt = list(base)
+            alt[3] = clamp(alt[3] + delta, -math.pi/2, math.pi/2)
+            alt[7] = clamp(alt[7] - delta, -3*math.pi/4, 3*math.pi/4)
+            candidates.append(alt)
+        best = None
+        best_cost = None
+        best_ik = None
+        for init in candidates:
+            pose, ik_vec = solve_pose(target_pos, init)
+            # cost: squared L2 over actuated joints [1,3,7]
+            d1 = float(ik_vec[1] - base[1])
+            d2 = float(ik_vec[3] - base[3])
+            d3 = float(ik_vec[7] - base[7])
+            cost = d1*d1 + d2*d2 + d3*d3
+            if best is None or cost < best_cost:
+                best = pose
+                best_cost = cost
+                best_ik = ik_vec
+        return best, best_ik
 
     try:
         if isinstance(origin, list) and len(origin) == 3:
@@ -175,21 +209,67 @@ def main():
             else:
                 fracs = [0.25, 0.5, 0.75]
 
-            # Build intermediate points along the straight line from origin to target
-            ox, oy, oz = float(origin[0]), float(origin[1]), float(origin[2])
-            tx, ty, tz = float(target[0]), float(target[1]), float(target[2])
             intermediates = []
             prev_ik = [0.0 for _ in chain.links]
-            for f in fracs:
-                p = [
-                    ox + (tx - ox) * f,
-                    oy + (ty - oy) * f,
-                    oz + (tz - oz) * f,
-                ]
-                pose, prev_ik = solve_pose(p, prev_ik)
-                intermediates.append(pose)
 
-            final_pose, _ = solve_pose(target, prev_ik)
+            # Require Robotics Toolbox ctraj/SE3 interpolation
+            try:
+                # Lazy import here to avoid cold-start penalty when not used
+                global SE3, ctraj
+                if SE3 is None or ctraj is None:
+                    try:
+                        from spatialmath import SE3 as _SE3  # type: ignore
+                        try:
+                            from roboticstoolbox.tools.trajectory import ctraj as _ctraj  # type: ignore
+                        except Exception:
+                            _ctraj = None  # type: ignore
+                        SE3 = _SE3  # type: ignore
+                        ctraj = _ctraj  # type: ignore
+                    except Exception:
+                        SE3 = None  # type: ignore
+                        ctraj = None  # type: ignore
+                if SE3 is None or ctraj is None:
+                    raise RuntimeError("Robotics Toolbox not available")
+                T0 = SE3(float(origin[0]), float(origin[1]), float(origin[2]))
+                T1 = SE3(float(target[0]), float(target[1]), float(target[2]))
+                if isinstance(ctraj_steps, int) and ctraj_steps > 1:
+                    Ts = ctraj(T0, T1, int(ctraj_steps))
+                    # Ts may be a numpy array of shape (4,4,N) or an iterable of SE3
+                    if hasattr(Ts, "shape") and len(getattr(Ts, "shape", [])) == 3:
+                        n = Ts.shape[2]  # type: ignore
+                        for k in range(1, max(0, n - 1)):
+                            A = Ts[:, :, k]  # type: ignore
+                            t = [float(A[0, 3]), float(A[1, 3]), float(A[2, 3])]
+                            pose, prev_ik = solve_pose_prefer_continuity(t, prev_ik)
+                            intermediates.append(pose)
+                    elif hasattr(Ts, "__iter__"):
+                        seq = list(Ts)
+                        L = len(seq)
+                        for idx, T in enumerate(seq):
+                            if idx == 0 or idx == L - 1:
+                                continue
+                            t = getattr(T, "t", None)
+                            if t is None and hasattr(T, "A"):
+                                A = T.A  # type: ignore
+                                t = [float(A[0, 3]), float(A[1, 3]), float(A[2, 3])]
+                            elif t is not None:
+                                t = [float(t[0]), float(t[1]), float(t[2])]
+                            else:
+                                continue
+                            pose, prev_ik = solve_pose_prefer_continuity(t, prev_ik)
+                            intermediates.append(pose)
+                else:
+                    for f in sorted(fracs):
+                        Ti = T0.interp(T1, float(f))
+                        t = Ti.t
+                        p = [float(t[0]), float(t[1]), float(t[2])]
+                        pose, prev_ik = solve_pose_prefer_continuity(p, prev_ik)
+                        intermediates.append(pose)
+            except Exception as e:
+                print(json.dumps({"error": "ctraj required", "details": str(e)}))
+                sys.exit(2)
+
+            final_pose, _ = solve_pose_prefer_continuity(target, prev_ik)
             out = {
                 "intermediates": intermediates,
                 "final": final_pose,

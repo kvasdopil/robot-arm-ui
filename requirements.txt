@@ -1,4 +1,6 @@
 ikpy==3.4.2
-numpy==2.0.2
+numpy==1.26.4
 scipy==1.13.1
 sympy==1.14.0
+roboticstoolbox-python==1.1.1
+spatialmath-python==1.1.9

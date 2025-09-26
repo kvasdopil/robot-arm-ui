@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
         forearmLength: 10,
       },
       fractions: [0.25, 0.5, 0.75],
+      use_ctraj: true,
+      ctrajSteps: 6,
     };
     const input = JSON.stringify(payload);
 
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
           py.kill('SIGKILL');
         } catch {}
       }
-    }, 5000);
+    }, 20000);
 
     const result = await done;
     clearTimeout(timer);
