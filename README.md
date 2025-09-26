@@ -15,15 +15,19 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 - Simple arm visualization with joints: base yaw, shoulder pitch, ankle, fixed ankle2, forearm pitch
 - UI sliders for base, shoulder, and forearm angles
 - Backend IK endpoint computes angles and a bones chain for visualization
-- Arm follows the selected target; IK recalculates when you release the drag (mouse up)
+- Arm follows the selected target; on mouse up it animates through intermediates (1/4, 1/2, 3/4 by default) and then to the final target
 - Camera and all targets persist between reloads
 - Joint limits: shoulder ±90°, forearm ±135°
+- Trajectory trail retains up to 20 segments
+- Bottom servo chart shows last 200 samples for all three servo angles (−180..180) with dashed markers at the end of each trajectory
 
 ### Project Layout Highlights
 
 - `src/app/page.tsx`: Scene, controls, UI, dynamic targets, and calls `/api/ik`
 - `src/components/RobotArm.tsx`: Arm visualization receiving angles (radians)
 - `src/components/IkDebug.tsx`: Renders bones chain returned by backend
+- `src/components/TargetsPolyline.tsx`: Draws orange polyline between targets and midpoint markers per segment
+- `src/components/ServoChart.tsx`: SVG chart of servo angles with end-of-trajectory markers
 - `src/app/api/ik/route.ts`: Next.js API route spawning Python solver
 - `scripts/ik_solver.py`: Python ikpy solver (reads JSON on stdin, prints JSON)
 - `src/lib/ikts.ts`: TypeScript IK utilities (kept for reference, client no longer solves IK)
@@ -123,8 +127,9 @@ echo '{"target":[1,3,-1], "origin":[0,2,0], "fractions":[0.25,0.5,0.75]}' | .ven
 ### Usage
 
 - Orbit to view the scene
-- Click numbered buttons to select a target; click + to add another
-- Drag the active target sphere; on mouse up the arm animates through intermediates (1/4, 1/2, 3/4 by default) and then to the final target
+- Click numbered buttons to select a target; click + to add another (active button is highlighted)
+- Drag the active target sphere; on mouse up the arm animates through intermediates then to the final target, recording a trajectory trail
+- Bottom chart shows the three servo angles live while moving (last 200 samples), with dashed lines indicating the end of each trajectory segment
 - Adjust sliders to manually set angles
 
 To reset saved state:

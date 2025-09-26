@@ -136,7 +136,7 @@ export default function Home() {
   function runIk(pos: [number, number, number], goalIndex?: number) {
     try {
       fetchAbortRef.current?.abort();
-    } catch {}
+    } catch { }
     if (stageTimerRef.current != null) {
       clearTimeout(stageTimerRef.current as unknown as number);
       stageTimerRef.current = null;
@@ -299,11 +299,10 @@ export default function Home() {
             onClick={() => {
               activateGoal(i);
             }}
-            className={`px-2 py-1 rounded border ${
-              activeTarget === i
+            className={`px-2 py-1 rounded border ${activeTarget === i
                 ? 'border-orange-500 bg-orange-500/80 text-white dark:bg-orange-500/60'
                 : 'border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black'
-            } text-xl px-4`}
+              } text-xl px-4`}
             title={`Apply last IK for goal ${i + 1}`}
           >
             {i + 1}
