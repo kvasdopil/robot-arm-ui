@@ -51,9 +51,7 @@ export default function Home() {
   const trajectoryTimerRef = useRef<number | null>(null);
   const [trajectoryPoints, setTrajectoryPoints] = useState<[number, number, number][]>([]);
   const trajectoryLatestRef = useRef<[number, number, number][]>([]);
-  const [trajectoryHistory, setTrajectoryHistory] = useState<
-    [number, number, number][][]
-  >([]);
+  const [trajectoryHistory, setTrajectoryHistory] = useState<[number, number, number][][]>([]);
   const lastAnglesRef = useRef<
     ({ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null)[]
   >([]);
@@ -116,7 +114,7 @@ export default function Home() {
   function runIk(pos: [number, number, number], goalIndex?: number) {
     try {
       fetchAbortRef.current?.abort();
-    } catch { }
+    } catch {}
     if (stageTimerRef.current != null) {
       clearTimeout(stageTimerRef.current as unknown as number);
       stageTimerRef.current = null;
@@ -138,55 +136,55 @@ export default function Home() {
       signal: controller.signal,
     })
       .then((r) => r.json())
-      .then(
-        (data: unknown) => {
-          type Angles = { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
-          type SolverPose = { angles: Angles; bones: BonePoint[] };
-          const anyData = data as Record<string, unknown>;
-          const mid = anyData.mid as SolverPose | undefined;
-          const finalPose = (anyData.final as SolverPose | undefined) || (anyData as unknown as { angles: Angles; bones: BonePoint[] });
+      .then((data: unknown) => {
+        type Angles = { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
+        type SolverPose = { angles: Angles; bones: BonePoint[] };
+        const anyData = data as Record<string, unknown>;
+        const mid = anyData.mid as SolverPose | undefined;
+        const finalPose =
+          (anyData.final as SolverPose | undefined) ||
+          (anyData as unknown as { angles: Angles; bones: BonePoint[] });
 
-          if (mid && finalPose) {
-            // Stage 1: animate to mid
-            setAngle1Deg(mid.angles.baseYawDeg);
-            setAngle2Deg(Math.max(-90, Math.min(90, mid.angles.shoulderPitchDeg)));
-            setAngle3Deg(Math.max(-135, Math.min(135, mid.angles.forearmPitchDeg)));
-            setServerBones(mid.bones);
-            startTrajectory();
-            // Stage 2 after 1s: animate to final
-            stageTimerRef.current = window.setTimeout(() => {
-              setAngle1Deg(finalPose.angles.baseYawDeg);
-              setAngle2Deg(Math.max(-90, Math.min(90, finalPose.angles.shoulderPitchDeg)));
-              setAngle3Deg(Math.max(-135, Math.min(135, finalPose.angles.forearmPitchDeg)));
-              setServerBones(finalPose.bones);
-              startTrajectory();
-              if (typeof goalIndex === 'number') {
-                const len = Math.max(lastAnglesRef.current.length, targets.length);
-                if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
-                if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
-                lastAnglesRef.current[goalIndex] = finalPose.angles;
-                lastBonesRef.current[goalIndex] = finalPose.bones;
-              }
-              stageTimerRef.current = null;
-            }, 1000) as unknown as number;
-          } else if (finalPose) {
-            const angles = finalPose.angles;
-            const bones = finalPose.bones;
-            setAngle1Deg(angles.baseYawDeg);
-            setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
-            setAngle3Deg(Math.max(-135, Math.min(135, angles.forearmPitchDeg)));
-            setServerBones(bones);
+        if (mid && finalPose) {
+          // Stage 1: animate to mid
+          setAngle1Deg(mid.angles.baseYawDeg);
+          setAngle2Deg(Math.max(-90, Math.min(90, mid.angles.shoulderPitchDeg)));
+          setAngle3Deg(Math.max(-135, Math.min(135, mid.angles.forearmPitchDeg)));
+          setServerBones(mid.bones);
+          startTrajectory();
+          // Stage 2 after 1s: animate to final
+          stageTimerRef.current = window.setTimeout(() => {
+            setAngle1Deg(finalPose.angles.baseYawDeg);
+            setAngle2Deg(Math.max(-90, Math.min(90, finalPose.angles.shoulderPitchDeg)));
+            setAngle3Deg(Math.max(-135, Math.min(135, finalPose.angles.forearmPitchDeg)));
+            setServerBones(finalPose.bones);
             startTrajectory();
             if (typeof goalIndex === 'number') {
               const len = Math.max(lastAnglesRef.current.length, targets.length);
               if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
               if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
-              lastAnglesRef.current[goalIndex] = angles;
-              lastBonesRef.current[goalIndex] = bones;
+              lastAnglesRef.current[goalIndex] = finalPose.angles;
+              lastBonesRef.current[goalIndex] = finalPose.bones;
             }
+            stageTimerRef.current = null;
+          }, 1000) as unknown as number;
+        } else if (finalPose) {
+          const angles = finalPose.angles;
+          const bones = finalPose.bones;
+          setAngle1Deg(angles.baseYawDeg);
+          setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
+          setAngle3Deg(Math.max(-135, Math.min(135, angles.forearmPitchDeg)));
+          setServerBones(bones);
+          startTrajectory();
+          if (typeof goalIndex === 'number') {
+            const len = Math.max(lastAnglesRef.current.length, targets.length);
+            if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
+            if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
+            lastAnglesRef.current[goalIndex] = angles;
+            lastBonesRef.current[goalIndex] = bones;
           }
-        },
-      )
+        }
+      })
       .catch(() => {
         // ignore abort/errors
       });
@@ -284,10 +282,11 @@ export default function Home() {
             onClick={() => {
               activateGoal(i);
             }}
-            className={`px-2 py-1 rounded border ${activeTarget === i
+            className={`px-2 py-1 rounded border ${
+              activeTarget === i
                 ? 'border-orange-500 bg-orange-500/80 text-white dark:bg-orange-500/60'
                 : 'border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black'
-              } text-xl px-4`}
+            } text-xl px-4`}
             title={`Apply last IK for goal ${i + 1}`}
           >
             {i + 1}

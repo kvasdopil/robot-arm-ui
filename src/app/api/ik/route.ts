@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         timedOut = true;
         try {
           py.kill('SIGKILL');
-        } catch { }
+        } catch {}
       }
     }, 5000);
 
