@@ -12,6 +12,7 @@ import { usePersistedState } from '@/hooks/usePersistedState';
 import RobotArm from '@/components/RobotArm';
 import IkDebug, { BonePoint } from '@/components/IkDebug';
 import TargetsPolyline from '@/components/TargetsPolyline';
+import ServoChart from '@/components/ServoChart';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -40,6 +41,9 @@ export default function Home() {
   const [animA1, setAnimA1] = useState<number>(0);
   const [animA2, setAnimA2] = useState<number>(0);
   const [animA3, setAnimA3] = useState<number>(0);
+  const animA1Ref = useRef<number>(0);
+  const animA2Ref = useRef<number>(0);
+  const animA3Ref = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
   const animStartRef = useRef<number>(0);
   const fromRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
@@ -52,6 +56,9 @@ export default function Home() {
   const [trajectoryPoints, setTrajectoryPoints] = useState<[number, number, number][]>([]);
   const trajectoryLatestRef = useRef<[number, number, number][]>([]);
   const [trajectoryHistory, setTrajectoryHistory] = useState<[number, number, number][][]>([]);
+  const [angleSamples, setAngleSamples] = useState<
+    { a1: number; a2: number; a3: number; mark?: boolean }[]
+  >([]);
   const lastAnglesRef = useRef<
     ({ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null)[]
   >([]);
@@ -66,7 +73,7 @@ export default function Home() {
       clearTimeout(trajectoryStopTimerRef.current as unknown as number);
       trajectoryStopTimerRef.current = null;
     }
-    // Flush any in-progress segment into history before starting a new one
+    // Flush previous trajectory path segment into history (servo chart keeps accumulating)
     const prevPts = trajectoryLatestRef.current;
     if (prevPts && prevPts.length > 1) {
       setTrajectoryHistory((hist) => {
@@ -88,6 +95,14 @@ export default function Home() {
         trajectoryLatestRef.current = next;
         return next;
       });
+      // sample current shown degrees (animA*) using refs; keep last 200 only
+      setAngleSamples((as) => {
+        const next = [
+          ...as,
+          { a1: animA1Ref.current, a2: animA2Ref.current, a3: animA3Ref.current },
+        ];
+        return next.length > 200 ? next.slice(next.length - 200) : next;
+      });
     }, 100) as unknown as number;
     trajectoryTimerRef.current = id;
     trajectoryStopTimerRef.current = window.setTimeout(() => {
@@ -104,6 +119,13 @@ export default function Home() {
         });
       }
       trajectoryLatestRef.current = [];
+      // Mark end of this trajectory segment in-line with samples
+      setAngleSamples((as) => {
+        if (as.length === 0) return as;
+        const marked = [...as];
+        marked[marked.length - 1] = { ...marked[marked.length - 1], mark: true };
+        return marked;
+      });
       if (trajectoryStopTimerRef.current != null) {
         clearTimeout(trajectoryStopTimerRef.current as unknown as number);
         trajectoryStopTimerRef.current = null;
@@ -114,7 +136,7 @@ export default function Home() {
   function runIk(pos: [number, number, number], goalIndex?: number) {
     try {
       fetchAbortRef.current?.abort();
-    } catch { }
+    } catch {}
     if (stageTimerRef.current != null) {
       clearTimeout(stageTimerRef.current as unknown as number);
       stageTimerRef.current = null;
@@ -247,9 +269,15 @@ export default function Home() {
       // For bounded joints, interpolate directly in linear space (no wrap)
       const d2 = toRef.current.a2 - fromRef.current.a2;
       const d3 = toRef.current.a3 - fromRef.current.a3;
-      setAnimA1(fromRef.current.a1 + d1 * k);
-      setAnimA2(fromRef.current.a2 + d2 * k);
-      setAnimA3(fromRef.current.a3 + d3 * k);
+      const na1 = fromRef.current.a1 + d1 * k;
+      const na2 = fromRef.current.a2 + d2 * k;
+      const na3 = fromRef.current.a3 + d3 * k;
+      setAnimA1(na1);
+      setAnimA2(na2);
+      setAnimA3(na3);
+      animA1Ref.current = na1;
+      animA2Ref.current = na2;
+      animA3Ref.current = na3;
       if (t < 1) rafRef.current = requestAnimationFrame(step);
       else rafRef.current = null;
     };
@@ -271,10 +299,11 @@ export default function Home() {
             onClick={() => {
               activateGoal(i);
             }}
-            className={`px-2 py-1 rounded border ${activeTarget === i
+            className={`px-2 py-1 rounded border ${
+              activeTarget === i
                 ? 'border-orange-500 bg-orange-500/80 text-white dark:bg-orange-500/60'
                 : 'border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black'
-              } text-xl px-4`}
+            } text-xl px-4`}
             title={`Apply last IK for goal ${i + 1}`}
           >
             {i + 1}
@@ -452,6 +481,9 @@ export default function Home() {
           }}
         />
       </Canvas>
+      <div className="absolute left-0 right-0 bottom-0 z-10">
+        <ServoChart current={angleSamples} />
+      </div>
     </div>
   );
 }
