@@ -119,6 +119,7 @@ def main():
 
     target = payload.get("target")
     origin = payload.get("origin")
+    fractions = payload.get("fractions")
     cfg = payload.get("config", {})
     if not isinstance(target, list) or len(target) != 3:
         print(json.dumps({"error": "Invalid target"}))
@@ -158,15 +159,35 @@ def main():
 
     try:
         if isinstance(origin, list) and len(origin) == 3:
-            mid = [
-                float(origin[0] + (target[0] - origin[0]) * 0.5),
-                float(origin[1] + (target[1] - origin[1]) * 0.5),
-                float(origin[2] + (target[2] - origin[2]) * 0.5),
-            ]
-            mid_pose = solve_pose(mid)
+            # Validate and build fractions list (exclusive of 0 and 1)
+            fracs: list[float] = []
+            if isinstance(fractions, list) and len(fractions) > 0:
+                for f in fractions:
+                    try:
+                        fv = float(f)
+                        if 0.0 < fv < 1.0:
+                            fracs.append(fv)
+                    except Exception:
+                        pass
+                fracs = sorted(list(dict.fromkeys(fracs)))
+            else:
+                fracs = [0.25, 0.5, 0.75]
+
+            # Build intermediate points along the straight line from origin to target
+            ox, oy, oz = float(origin[0]), float(origin[1]), float(origin[2])
+            tx, ty, tz = float(target[0]), float(target[1]), float(target[2])
+            intermediates = []
+            for f in fracs:
+                p = [
+                    ox + (tx - ox) * f,
+                    oy + (ty - oy) * f,
+                    oz + (tz - oz) * f,
+                ]
+                intermediates.append(solve_pose(p))
+
             final_pose = solve_pose(target)
             out = {
-                "mid": mid_pose,
+                "intermediates": intermediates,
                 "final": final_pose,
                 # Back-compat top-level mirrors final
                 "angles": final_pose["angles"],
@@ -177,6 +198,7 @@ def main():
         else:
             final_pose = solve_pose(target)
             out = {
+                "intermediates": [],
                 "final": final_pose,
                 "angles": final_pose["angles"],
                 "bones": final_pose["bones"],

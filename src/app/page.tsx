@@ -71,7 +71,7 @@ export default function Home() {
     if (prevPts && prevPts.length > 1) {
       setTrajectoryHistory((hist) => {
         const next = [...hist, prevPts];
-        if (next.length > 10) next.shift();
+        if (next.length > 20) next.shift();
         return next;
       });
     }
@@ -99,7 +99,7 @@ export default function Home() {
       if (finalPts && finalPts.length > 1) {
         setTrajectoryHistory((hist) => {
           const next = [...hist, finalPts];
-          if (next.length > 10) next.shift();
+          if (next.length > 20) next.shift();
           return next;
         });
       }
@@ -140,50 +140,39 @@ export default function Home() {
         type Angles = { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
         type SolverPose = { angles: Angles; bones: BonePoint[] };
         const anyData = data as Record<string, unknown>;
-        const mid = anyData.mid as SolverPose | undefined;
         const finalPose =
           (anyData.final as SolverPose | undefined) ||
           (anyData as unknown as { angles: Angles; bones: BonePoint[] });
+        const intermediates = (anyData.intermediates as SolverPose[] | undefined) || [];
 
-        if (mid && finalPose) {
-          // Stage 1: animate to mid
-          setAngle1Deg(mid.angles.baseYawDeg);
-          setAngle2Deg(Math.max(-90, Math.min(90, mid.angles.shoulderPitchDeg)));
-          setAngle3Deg(Math.max(-135, Math.min(135, mid.angles.forearmPitchDeg)));
-          setServerBones(mid.bones);
+        const sequence: SolverPose[] = [...intermediates, finalPose].filter(
+          Boolean,
+        ) as SolverPose[];
+        if (sequence.length === 0) return;
+
+        // chain animations 1s each
+        const runStage = (index: number) => {
+          if (index >= sequence.length) return;
+          const pose = sequence[index];
+          setAngle1Deg(pose.angles.baseYawDeg);
+          setAngle2Deg(Math.max(-90, Math.min(90, pose.angles.shoulderPitchDeg)));
+          setAngle3Deg(Math.max(-135, Math.min(135, pose.angles.forearmPitchDeg)));
+          setServerBones(pose.bones);
           startTrajectory();
-          // Stage 2 after 1s: animate to final
           stageTimerRef.current = window.setTimeout(() => {
-            setAngle1Deg(finalPose.angles.baseYawDeg);
-            setAngle2Deg(Math.max(-90, Math.min(90, finalPose.angles.shoulderPitchDeg)));
-            setAngle3Deg(Math.max(-135, Math.min(135, finalPose.angles.forearmPitchDeg)));
-            setServerBones(finalPose.bones);
-            startTrajectory();
-            if (typeof goalIndex === 'number') {
+            runStage(index + 1);
+            if (index === sequence.length - 1 && typeof goalIndex === 'number') {
+              const angles = pose.angles;
+              const bones = pose.bones;
               const len = Math.max(lastAnglesRef.current.length, targets.length);
               if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
               if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
-              lastAnglesRef.current[goalIndex] = finalPose.angles;
-              lastBonesRef.current[goalIndex] = finalPose.bones;
+              lastAnglesRef.current[goalIndex] = angles;
+              lastBonesRef.current[goalIndex] = bones;
             }
-            stageTimerRef.current = null;
           }, 1000) as unknown as number;
-        } else if (finalPose) {
-          const angles = finalPose.angles;
-          const bones = finalPose.bones;
-          setAngle1Deg(angles.baseYawDeg);
-          setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
-          setAngle3Deg(Math.max(-135, Math.min(135, angles.forearmPitchDeg)));
-          setServerBones(bones);
-          startTrajectory();
-          if (typeof goalIndex === 'number') {
-            const len = Math.max(lastAnglesRef.current.length, targets.length);
-            if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
-            if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
-            lastAnglesRef.current[goalIndex] = angles;
-            lastBonesRef.current[goalIndex] = bones;
-          }
-        }
+        };
+        runStage(0);
       })
       .catch(() => {
         // ignore abort/errors

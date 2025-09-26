@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
         ankle2Length: 4,
         forearmLength: 10,
       },
+      fractions: [0.25, 0.5, 0.75],
     };
     const input = JSON.stringify(payload);
 
