@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const target = body?.target as [number, number, number] | undefined;
+    const origin = body?.origin as [number, number, number] | undefined;
     if (!target || !Array.isArray(target) || target.length !== 3) {
       return NextResponse.json({ error: 'Invalid target' }, { status: 400 });
     }
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
 
     const payload = {
       target,
+      origin,
       config: {
         baseLength: 3,
         shoulderLength: 4,

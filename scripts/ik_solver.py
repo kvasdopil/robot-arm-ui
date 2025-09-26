@@ -118,6 +118,7 @@ def main():
         sys.exit(1)
 
     target = payload.get("target")
+    origin = payload.get("origin")
     cfg = payload.get("config", {})
     if not isinstance(target, list) or len(target) != 3:
         print(json.dumps({"error": "Invalid target"}))
@@ -125,48 +126,66 @@ def main():
 
     chain = build_chain(cfg)
 
-    # Initial guess: zeros for all joints
-    init = [0.0 for _ in chain.links]
+    # Helper to solve IK and return angles/bones/effector
+    def solve_pose(target_pos):
+        init = [0.0 for _ in chain.links]
+        ik = chain.inverse_kinematics(target_position=target_pos, initial_position=init)
+        frames = chain.forward_kinematics(ik, full_kinematics=True)
+        pts = [vec_from_frame(f) for f in frames]
+        bone_defs = [
+            ("base", 1, 2),
+            ("shoulder", 2, 4),
+            ("ankle", 4, 5),
+            ("ankle2", 5, 6),
+            ("forearm", 6, 8),
+        ]
+        bones_loc = [
+            {"name": n, "start": pts[i], "end": pts[j]}
+            for (n, i, j) in bone_defs
+        ]
+        base_yaw_loc = to_deg(ik[1])
+        shoulder_pitch_loc = to_deg(ik[3])
+        forearm_pitch_loc = to_deg(ik[7])
+        return {
+            "angles": {
+                "baseYawDeg": base_yaw_loc,
+                "shoulderPitchDeg": clamp(shoulder_pitch_loc, -90.0, 90.0),
+                "forearmPitchDeg": clamp(forearm_pitch_loc, -135.0, 135.0),
+            },
+            "bones": bones_loc,
+            "effector": pts[-1],
+        }
 
     try:
-        ik = chain.inverse_kinematics(target_position=target, initial_position=init)
+        if isinstance(origin, list) and len(origin) == 3:
+            mid = [
+                float(origin[0] + (target[0] - origin[0]) * 0.5),
+                float(origin[1] + (target[1] - origin[1]) * 0.5),
+                float(origin[2] + (target[2] - origin[2]) * 0.5),
+            ]
+            mid_pose = solve_pose(mid)
+            final_pose = solve_pose(target)
+            out = {
+                "mid": mid_pose,
+                "final": final_pose,
+                # Back-compat top-level mirrors final
+                "angles": final_pose["angles"],
+                "bones": final_pose["bones"],
+                "effector": final_pose["effector"],
+            }
+            print(json.dumps(out))
+        else:
+            final_pose = solve_pose(target)
+            out = {
+                "final": final_pose,
+                "angles": final_pose["angles"],
+                "bones": final_pose["bones"],
+                "effector": final_pose["effector"],
+            }
+            print(json.dumps(out))
     except Exception as e:
         print(json.dumps({"error": "IK failed", "details": str(e)}))
         sys.exit(2)
-
-    # Forward kinematics for all links
-    frames = chain.forward_kinematics(ik, full_kinematics=True)
-    points = [vec_from_frame(f) for f in frames]
-
-    # Construct bones by pairwise positions along our named links
-    # Link indices: 0 Origin, 1 base_yaw, 2 base, 3 shoulder_joint, 4 shoulder, 5 ankle, 6 ankle2, 7 forearm_joint, 8 forearm
-    bone_defs = [
-        ("base", 1, 2),
-        ("shoulder", 2, 4),
-        ("ankle", 4, 5),
-        ("ankle2", 5, 6),
-        ("forearm", 6, 8),
-    ]
-    bones = [
-        {"name": n, "start": points[i], "end": points[j]}
-        for (n, i, j) in bone_defs
-    ]
-
-    # Extract 3 servo angles: base_yaw, shoulder (z), forearm (z)
-    base_yaw = to_deg(ik[1])
-    shoulder_pitch = to_deg(ik[3])
-    forearm_pitch = to_deg(ik[7])
-
-    out = {
-        "angles": {
-            "baseYawDeg": base_yaw,
-            "shoulderPitchDeg": clamp(shoulder_pitch, -90.0, 90.0),
-            "forearmPitchDeg": clamp(forearm_pitch, -135.0, 135.0),
-        },
-        "bones": bones,
-        "effector": points[-1],
-    }
-    print(json.dumps(out))
 
 
 if __name__ == "__main__":

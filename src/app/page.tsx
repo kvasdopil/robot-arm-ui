@@ -11,6 +11,7 @@ import {
 import { usePersistedState } from '@/hooks/usePersistedState';
 import RobotArm from '@/components/RobotArm';
 import IkDebug, { BonePoint } from '@/components/IkDebug';
+import TargetsPolyline from '@/components/TargetsPolyline';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -45,6 +46,8 @@ export default function Home() {
   const toRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
   const fetchAbortRef = useRef<AbortController | null>(null);
   const endEffectorRef = useRef<Object3D | null>(null);
+  const stageTimerRef = useRef<number | null>(null);
+  const trajectoryStopTimerRef = useRef<number | null>(null);
   const trajectoryTimerRef = useRef<number | null>(null);
   const [trajectoryPoints, setTrajectoryPoints] = useState<[number, number, number][]>([]);
   const trajectoryLatestRef = useRef<[number, number, number][]>([]);
@@ -61,6 +64,19 @@ export default function Home() {
       clearInterval(trajectoryTimerRef.current as unknown as number);
       trajectoryTimerRef.current = null;
     }
+    if (trajectoryStopTimerRef.current != null) {
+      clearTimeout(trajectoryStopTimerRef.current as unknown as number);
+      trajectoryStopTimerRef.current = null;
+    }
+    // Flush any in-progress segment into history before starting a new one
+    const prevPts = trajectoryLatestRef.current;
+    if (prevPts && prevPts.length > 1) {
+      setTrajectoryHistory((hist) => {
+        const next = [...hist, prevPts];
+        if (next.length > 10) next.shift();
+        return next;
+      });
+    }
     setTrajectoryPoints([]);
     trajectoryLatestRef.current = [];
     const id = window.setInterval(() => {
@@ -76,7 +92,7 @@ export default function Home() {
       });
     }, 100) as unknown as number;
     trajectoryTimerRef.current = id;
-    window.setTimeout(() => {
+    trajectoryStopTimerRef.current = window.setTimeout(() => {
       if (trajectoryTimerRef.current != null) {
         clearInterval(trajectoryTimerRef.current as unknown as number);
         trajectoryTimerRef.current = null;
@@ -85,45 +101,89 @@ export default function Home() {
       if (finalPts && finalPts.length > 1) {
         setTrajectoryHistory((hist) => {
           const next = [...hist, finalPts];
-          if (next.length > 5) next.shift();
+          if (next.length > 10) next.shift();
           return next;
         });
       }
       trajectoryLatestRef.current = [];
-    }, 1300);
+      if (trajectoryStopTimerRef.current != null) {
+        clearTimeout(trajectoryStopTimerRef.current as unknown as number);
+        trajectoryStopTimerRef.current = null;
+      }
+    }, 1300) as unknown as number;
   }
 
   function runIk(pos: [number, number, number], goalIndex?: number) {
     try {
       fetchAbortRef.current?.abort();
     } catch { }
+    if (stageTimerRef.current != null) {
+      clearTimeout(stageTimerRef.current as unknown as number);
+      stageTimerRef.current = null;
+    }
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    // Origin from current end-effector world position
+    let origin: [number, number, number] | undefined;
+    const eff = endEffectorRef.current;
+    if (eff) {
+      const v = new Vector3();
+      eff.getWorldPosition(v);
+      origin = [v.x, v.y, v.z];
+    }
     fetch('/api/ik', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: pos }),
+      body: JSON.stringify({ target: pos, origin }),
       signal: controller.signal,
     })
       .then((r) => r.json())
       .then(
-        (data: {
-          angles: { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
-          bones: BonePoint[];
-        }) => {
-          const { angles, bones } = data;
-          setAngle1Deg(angles.baseYawDeg);
-          setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
-          setAngle3Deg(Math.max(-135, Math.min(135, angles.forearmPitchDeg)));
-          setServerBones(bones);
-          startTrajectory();
-          if (typeof goalIndex === 'number') {
-            // Ensure caches sized
-            const len = Math.max(lastAnglesRef.current.length, targets.length);
-            if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
-            if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
-            lastAnglesRef.current[goalIndex] = angles;
-            lastBonesRef.current[goalIndex] = bones;
+        (data: unknown) => {
+          type Angles = { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
+          type SolverPose = { angles: Angles; bones: BonePoint[] };
+          const anyData = data as Record<string, unknown>;
+          const mid = anyData.mid as SolverPose | undefined;
+          const finalPose = (anyData.final as SolverPose | undefined) || (anyData as unknown as { angles: Angles; bones: BonePoint[] });
+
+          if (mid && finalPose) {
+            // Stage 1: animate to mid
+            setAngle1Deg(mid.angles.baseYawDeg);
+            setAngle2Deg(Math.max(-90, Math.min(90, mid.angles.shoulderPitchDeg)));
+            setAngle3Deg(Math.max(-135, Math.min(135, mid.angles.forearmPitchDeg)));
+            setServerBones(mid.bones);
+            startTrajectory();
+            // Stage 2 after 1s: animate to final
+            stageTimerRef.current = window.setTimeout(() => {
+              setAngle1Deg(finalPose.angles.baseYawDeg);
+              setAngle2Deg(Math.max(-90, Math.min(90, finalPose.angles.shoulderPitchDeg)));
+              setAngle3Deg(Math.max(-135, Math.min(135, finalPose.angles.forearmPitchDeg)));
+              setServerBones(finalPose.bones);
+              startTrajectory();
+              if (typeof goalIndex === 'number') {
+                const len = Math.max(lastAnglesRef.current.length, targets.length);
+                if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
+                if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
+                lastAnglesRef.current[goalIndex] = finalPose.angles;
+                lastBonesRef.current[goalIndex] = finalPose.bones;
+              }
+              stageTimerRef.current = null;
+            }, 1000) as unknown as number;
+          } else if (finalPose) {
+            const angles = finalPose.angles;
+            const bones = finalPose.bones;
+            setAngle1Deg(angles.baseYawDeg);
+            setAngle2Deg(Math.max(-90, Math.min(90, angles.shoulderPitchDeg)));
+            setAngle3Deg(Math.max(-135, Math.min(135, angles.forearmPitchDeg)));
+            setServerBones(bones);
+            startTrajectory();
+            if (typeof goalIndex === 'number') {
+              const len = Math.max(lastAnglesRef.current.length, targets.length);
+              if (lastAnglesRef.current.length < len) lastAnglesRef.current.length = len;
+              if (lastBonesRef.current.length < len) lastBonesRef.current.length = len;
+              lastAnglesRef.current[goalIndex] = angles;
+              lastBonesRef.current[goalIndex] = bones;
+            }
           }
         },
       )
@@ -153,12 +213,9 @@ export default function Home() {
 
   function activateGoal(goalIndex: number) {
     setActiveTarget(goalIndex);
-    if (hasGoalIk(goalIndex)) {
-      applyGoal(goalIndex);
-    } else {
-      const pos = getGoalPos(goalIndex);
-      runIk(pos, goalIndex);
-    }
+    const pos = getGoalPos(goalIndex);
+    // Always run IK with current origin so we always go through a midpoint
+    runIk(pos, goalIndex);
   }
 
   function targetColor(i: number): string {
@@ -227,7 +284,10 @@ export default function Home() {
             onClick={() => {
               activateGoal(i);
             }}
-            className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+            className={`px-2 py-1 rounded border ${activeTarget === i
+                ? 'border-orange-500 bg-orange-500/80 text-white dark:bg-orange-500/60'
+                : 'border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black'
+              } text-xl px-4`}
             title={`Apply last IK for goal ${i + 1}`}
           >
             {i + 1}
@@ -295,6 +355,8 @@ export default function Home() {
         <color attach="background" args={['lightgray']} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 5, 5]} intensity={0.8} />
+        {/* Targets polyline and midpoints */}
+        <TargetsPolyline points={targets} />
         {/* Active target with TransformControls */}
         {targets.map((pos, i) =>
           activeTarget === i ? (
