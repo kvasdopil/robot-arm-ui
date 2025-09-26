@@ -163,7 +163,12 @@ export default function Home() {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    const from = { a1: animA1, a2: animA2, a3: animA3 };
+    // Clamp bounded joints for the start state to avoid wrap-induced stalls
+    const from = {
+      a1: animA1,
+      a2: Math.min(Math.max(animA2, -90), 90),
+      a3: Math.min(Math.max(animA3, -135), 135),
+    };
     const to = {
       a1: angle1Deg,
       a2: Math.min(Math.max(angle2Deg, -90), 90),
@@ -177,8 +182,9 @@ export default function Home() {
       const t = Math.min(1, (now - animStartRef.current) / duration);
       const k = easeInOutCubic(t);
       const d1 = normalizeDeltaDeg(toRef.current.a1 - fromRef.current.a1);
-      const d2 = normalizeDeltaDeg(toRef.current.a2 - fromRef.current.a2);
-      const d3 = normalizeDeltaDeg(toRef.current.a3 - fromRef.current.a3);
+      // For bounded joints, interpolate directly in linear space (no wrap)
+      const d2 = toRef.current.a2 - fromRef.current.a2;
+      const d3 = toRef.current.a3 - fromRef.current.a3;
       setAnimA1(fromRef.current.a1 + d1 * k);
       setAnimA2(fromRef.current.a2 + d2 * k);
       setAnimA3(fromRef.current.a3 + d3 * k);
@@ -290,7 +296,9 @@ export default function Home() {
                 if (orbitRef.current) orbitRef.current.enabled = true;
                 const m = activeMeshRef.current;
                 if (!m) return;
-                const newPos: [number, number, number] = [m.position.x, m.position.y, m.position.z];
+                const v = new Vector3();
+                m.getWorldPosition(v);
+                const newPos: [number, number, number] = [v.x, v.y, v.z];
                 setTargets(
                   targets.map((p: [number, number, number], idx: number) =>
                     idx === i ? newPos : p,
