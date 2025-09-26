@@ -47,6 +47,10 @@ export default function Home() {
   const endEffectorRef = useRef<Object3D | null>(null);
   const trajectoryTimerRef = useRef<number | null>(null);
   const [trajectoryPoints, setTrajectoryPoints] = useState<[number, number, number][]>([]);
+  const trajectoryLatestRef = useRef<[number, number, number][]>([]);
+  const [trajectoryHistory, setTrajectoryHistory] = useState<
+    [number, number, number][][]
+  >([]);
   const lastAnglesRef = useRef<
     ({ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null)[]
   >([]);
@@ -58,13 +62,18 @@ export default function Home() {
       trajectoryTimerRef.current = null;
     }
     setTrajectoryPoints([]);
+    trajectoryLatestRef.current = [];
     const id = window.setInterval(() => {
       const eff = endEffectorRef.current;
       if (!eff) return;
       const v = new Vector3();
       eff.getWorldPosition(v);
       const p: [number, number, number] = [v.x, v.y, v.z];
-      setTrajectoryPoints((pts) => [...pts, p]);
+      setTrajectoryPoints((pts) => {
+        const next = [...pts, p];
+        trajectoryLatestRef.current = next;
+        return next;
+      });
     }, 100) as unknown as number;
     trajectoryTimerRef.current = id;
     window.setTimeout(() => {
@@ -72,6 +81,15 @@ export default function Home() {
         clearInterval(trajectoryTimerRef.current as unknown as number);
         trajectoryTimerRef.current = null;
       }
+      const finalPts = trajectoryLatestRef.current;
+      if (finalPts && finalPts.length > 1) {
+        setTrajectoryHistory((hist) => {
+          const next = [...hist, finalPts];
+          if (next.length > 5) next.shift();
+          return next;
+        });
+      }
+      trajectoryLatestRef.current = [];
     }, 1300);
   }
 
@@ -342,6 +360,20 @@ export default function Home() {
         />
 
         {serverBones && <IkDebug bones={serverBones} />}
+
+        {trajectoryHistory.map((pts, i) =>
+          pts.length > 1 ? (
+            <Line
+              key={`traj-hist-${i}`}
+              points={pts}
+              color="purple"
+              lineWidth={1}
+              dashed={false}
+              transparent
+              opacity={0.35}
+            />
+          ) : null,
+        )}
 
         {trajectoryPoints.length > 1 && (
           <Line
