@@ -61,25 +61,31 @@ npm run dev
 - Request body:
 
 ```json
-{ "target": [x, y, z] }
+{
+  "target": [x, y, z],
+  "origin": [x, y, z],
+  "fractions": [0.25, 0.5, 0.75]
+}
 ```
 
 - Response body:
 
 ```json
 {
-  "angles": {
-    "baseYawDeg": number,
-    "shoulderPitchDeg": number,
-    "forearmPitchDeg": number
-  },
-  "bones": [
-    { "name": "base", "start": [x,y,z], "end": [x,y,z] },
-    { "name": "shoulder", "start": [x,y,z], "end": [x,y,z] },
-    { "name": "ankle", "start": [x,y,z], "end": [x,y,z] },
-    { "name": "ankle2", "start": [x,y,z], "end": [x,y,z] },
-    { "name": "forearm", "start": [x,y,z], "end": [x,y,z] }
+  "intermediates": [
+    {
+      "angles": { "baseYawDeg": number, "shoulderPitchDeg": number, "forearmPitchDeg": number },
+      "bones": [ { "name": string, "start": [x,y,z], "end": [x,y,z] }, ... ],
+      "effector": [x, y, z]
+    }
   ],
+  "final": {
+    "angles": { "baseYawDeg": number, "shoulderPitchDeg": number, "forearmPitchDeg": number },
+    "bones": [ { "name": string, "start": [x,y,z], "end": [x,y,z] }, ... ],
+    "effector": [x, y, z]
+  },
+  "angles": { "baseYawDeg": number, "shoulderPitchDeg": number, "forearmPitchDeg": number },
+  "bones": [ { "name": string, "start": [x,y,z], "end": [x,y,z] }, ... ],
   "effector": [x, y, z]
 }
 ```
@@ -89,12 +95,14 @@ Notes:
 - The API uses the project venv Python at `.venv/bin/python` and launches `scripts/ik_solver.py`.
 - Arm configuration is currently hardcoded in the solver (base=3, shoulder=4, ankle=10, ankle2=4, forearm=10).
 - Joint clamps in server output: shoulder ±90°, forearm ±135°.
+- If `origin` is provided, the solver returns `intermediates` poses along the straight line determined by `fractions` (defaults to `[0.25, 0.5, 0.75]`).
+- IK solves are warm-started from the previous solution to minimize movement between steps.
 - If your venv lives elsewhere, update the Python path in `src/app/api/ik/route.ts`.
 
 ### Python Solver
 
 - Location: `scripts/ik_solver.py`
-- Input (stdin): `{ target: [x,y,z], config?: { baseLength, shoulderLength, ankleLength, ankle2Length, forearmLength } }`
+- Input (stdin): `{ target: [x,y,z], origin?: [x,y,z], fractions?: number[], config?: { baseLength, shoulderLength, ankleLength, ankle2Length, forearmLength } }`
 - Output (stdout): JSON as per the Backend IK API above
 - Kinematic model:
   - base_yaw (rot-Y) → base (fixed +Y)
@@ -105,14 +113,18 @@ Notes:
 Manual test:
 
 ```bash
+# Final only
 echo '{"target":[1,3,-1]}' | .venv/bin/python scripts/ik_solver.py
+
+# With origin and intermediates (1/4, 1/2, 3/4)
+echo '{"target":[1,3,-1], "origin":[0,2,0], "fractions":[0.25,0.5,0.75]}' | .venv/bin/python scripts/ik_solver.py
 ```
 
 ### Usage
 
 - Orbit to view the scene
 - Click numbered buttons to select a target; click + to add another
-- Drag the active target sphere; IK runs on mouse up and animates to the solution
+- Drag the active target sphere; on mouse up the arm animates through intermediates (1/4, 1/2, 3/4 by default) and then to the final target
 - Adjust sliders to manually set angles
 
 To reset saved state:

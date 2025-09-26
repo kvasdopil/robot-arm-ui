@@ -127,10 +127,12 @@ def main():
 
     chain = build_chain(cfg)
 
-    # Helper to solve IK and return angles/bones/effector
-    def solve_pose(target_pos):
-        init = [0.0 for _ in chain.links]
-        ik = chain.inverse_kinematics(target_position=target_pos, initial_position=init)
+    # Helper to solve IK and return (pose, ik_vector)
+    def solve_pose(target_pos, init_guess):
+        # Ensure init guess length matches links
+        if not isinstance(init_guess, list) or len(init_guess) != len(chain.links):
+            init_guess = [0.0 for _ in chain.links]
+        ik = chain.inverse_kinematics(target_position=target_pos, initial_position=init_guess)
         frames = chain.forward_kinematics(ik, full_kinematics=True)
         pts = [vec_from_frame(f) for f in frames]
         bone_defs = [
@@ -147,7 +149,7 @@ def main():
         base_yaw_loc = to_deg(ik[1])
         shoulder_pitch_loc = to_deg(ik[3])
         forearm_pitch_loc = to_deg(ik[7])
-        return {
+        return ({
             "angles": {
                 "baseYawDeg": base_yaw_loc,
                 "shoulderPitchDeg": clamp(shoulder_pitch_loc, -90.0, 90.0),
@@ -155,7 +157,7 @@ def main():
             },
             "bones": bones_loc,
             "effector": pts[-1],
-        }
+        }, ik)
 
     try:
         if isinstance(origin, list) and len(origin) == 3:
@@ -177,15 +179,17 @@ def main():
             ox, oy, oz = float(origin[0]), float(origin[1]), float(origin[2])
             tx, ty, tz = float(target[0]), float(target[1]), float(target[2])
             intermediates = []
+            prev_ik = [0.0 for _ in chain.links]
             for f in fracs:
                 p = [
                     ox + (tx - ox) * f,
                     oy + (ty - oy) * f,
                     oz + (tz - oz) * f,
                 ]
-                intermediates.append(solve_pose(p))
+                pose, prev_ik = solve_pose(p, prev_ik)
+                intermediates.append(pose)
 
-            final_pose = solve_pose(target)
+            final_pose, _ = solve_pose(target, prev_ik)
             out = {
                 "intermediates": intermediates,
                 "final": final_pose,
@@ -196,7 +200,8 @@ def main():
             }
             print(json.dumps(out))
         else:
-            final_pose = solve_pose(target)
+            base_init = [0.0 for _ in chain.links]
+            final_pose, _ = solve_pose(target, base_init)
             out = {
                 "intermediates": [],
                 "final": final_pose,
