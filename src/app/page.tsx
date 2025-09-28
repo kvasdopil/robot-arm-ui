@@ -180,6 +180,14 @@ export default function Home() {
           setAngle2Deg(Math.max(-90, Math.min(90, pose.angles.shoulderPitchDeg)));
           setAngle3Deg(Math.max(-135, Math.min(135, pose.angles.forearmPitchDeg)));
           setServerBones(pose.bones);
+          // Notify move endpoint for each stage (intermediate + final)
+          try {
+            fetch('/api/move', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ angles: pose.angles }),
+            }).catch(() => { });
+          } catch { }
           startTrajectory();
           stageTimerRef.current = window.setTimeout(() => {
             runStage(index + 1);
@@ -292,6 +300,34 @@ export default function Home() {
   return (
     <div className="relative w-screen h-screen">
       <div className="flex items-center gap-2 absolute right-4 top-4 z-10 flex-row">
+        <button
+          type="button"
+          onClick={() => {
+            try {
+              fetchAbortRef.current?.abort();
+            } catch { }
+            if (stageTimerRef.current != null) {
+              clearTimeout(stageTimerRef.current as unknown as number);
+              stageTimerRef.current = null;
+            }
+            const angles = { baseYawDeg: 0, shoulderPitchDeg: 0, forearmPitchDeg: 0 };
+            setAngle1Deg(angles.baseYawDeg);
+            setAngle2Deg(angles.shoulderPitchDeg);
+            setAngle3Deg(angles.forearmPitchDeg);
+            startTrajectory();
+            try {
+              fetch('/api/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ angles }),
+              }).catch(() => { });
+            } catch { }
+          }}
+          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          title="Move to home (0,0,0)"
+        >
+          Home
+        </button>
         {targets.map((_, i) => (
           <button
             key={`tbtn-${i}`}
