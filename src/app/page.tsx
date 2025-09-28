@@ -35,19 +35,32 @@ export default function Home() {
   const [angle1Deg, setAngle1Deg] = usePersistedState<number>('arm-angle1-deg', 0);
   const [angle2Deg, setAngle2Deg] = usePersistedState<number>('arm-angle2-deg', 0);
   const [angle3Deg, setAngle3Deg] = usePersistedState<number>('arm-angle3-deg', 0);
+  const [angle4Deg, setAngle4Deg] = usePersistedState<number>('arm-angle4-deg', 0);
   const [serverBones, setServerBones] = useState<BonePoint[] | null>(null);
 
   // Animated angles (tween to target in 1s)
   const [animA1, setAnimA1] = useState<number>(0);
   const [animA2, setAnimA2] = useState<number>(0);
   const [animA3, setAnimA3] = useState<number>(0);
+  const [animA4, setAnimA4] = useState<number>(0);
   const animA1Ref = useRef<number>(0);
   const animA2Ref = useRef<number>(0);
   const animA3Ref = useRef<number>(0);
+  const animA4Ref = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
   const animStartRef = useRef<number>(0);
-  const fromRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
-  const toRef = useRef<{ a1: number; a2: number; a3: number }>({ a1: 0, a2: 0, a3: 0 });
+  const fromRef = useRef<{ a1: number; a2: number; a3: number; a4: number }>({
+    a1: 0,
+    a2: 0,
+    a3: 0,
+    a4: 0,
+  });
+  const toRef = useRef<{ a1: number; a2: number; a3: number; a4: number }>({
+    a1: 0,
+    a2: 0,
+    a3: 0,
+    a4: 0,
+  });
   const fetchAbortRef = useRef<AbortController | null>(null);
   const endEffectorRef = useRef<Object3D | null>(null);
   const stageTimerRef = useRef<number | null>(null);
@@ -60,7 +73,12 @@ export default function Home() {
     { a1: number; a2: number; a3: number; mark?: boolean }[]
   >([]);
   const lastAnglesRef = useRef<
-    ({ baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number } | null)[]
+    ({
+      baseYawDeg: number;
+      shoulderPitchDeg: number;
+      forearmPitchDeg: number;
+      wristPitchDeg?: number;
+    } | null)[]
   >([]);
   const lastBonesRef = useRef<(BonePoint[] | null)[]>([]);
 
@@ -136,7 +154,7 @@ export default function Home() {
   function runIk(pos: [number, number, number], goalIndex?: number) {
     try {
       fetchAbortRef.current?.abort();
-    } catch { }
+    } catch {}
     if (stageTimerRef.current != null) {
       clearTimeout(stageTimerRef.current as unknown as number);
       stageTimerRef.current = null;
@@ -159,7 +177,12 @@ export default function Home() {
     })
       .then((r) => r.json())
       .then((data: unknown) => {
-        type Angles = { baseYawDeg: number; shoulderPitchDeg: number; forearmPitchDeg: number };
+        type Angles = {
+          baseYawDeg: number;
+          shoulderPitchDeg: number;
+          forearmPitchDeg: number;
+          wristPitchDeg?: number;
+        };
         type SolverPose = { angles: Angles; bones: BonePoint[] };
         const anyData = data as Record<string, unknown>;
         const finalPose =
@@ -179,6 +202,9 @@ export default function Home() {
           setAngle1Deg(pose.angles.baseYawDeg);
           setAngle2Deg(Math.max(-90, Math.min(90, pose.angles.shoulderPitchDeg)));
           setAngle3Deg(Math.max(-135, Math.min(135, pose.angles.forearmPitchDeg)));
+          if (typeof pose.angles.wristPitchDeg === 'number') {
+            setAngle4Deg(Math.max(-135, Math.min(135, pose.angles.wristPitchDeg)));
+          }
           setServerBones(pose.bones);
           // Notify move endpoint for each stage (intermediate + final)
           try {
@@ -186,8 +212,8 @@ export default function Home() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ angles: pose.angles }),
-            }).catch(() => { });
-          } catch { }
+            }).catch(() => {});
+          } catch {}
           startTrajectory();
           stageTimerRef.current = window.setTimeout(() => {
             runStage(index + 1);
@@ -260,11 +286,13 @@ export default function Home() {
       a1: animA1,
       a2: Math.min(Math.max(animA2, -90), 90),
       a3: Math.min(Math.max(animA3, -135), 135),
+      a4: animA4,
     };
     const to = {
       a1: angle1Deg,
       a2: Math.min(Math.max(angle2Deg, -90), 90),
       a3: Math.min(Math.max(angle3Deg, -135), 135),
+      a4: angle4Deg,
     };
     fromRef.current = from;
     toRef.current = to;
@@ -277,15 +305,19 @@ export default function Home() {
       // For bounded joints, interpolate directly in linear space (no wrap)
       const d2 = toRef.current.a2 - fromRef.current.a2;
       const d3 = toRef.current.a3 - fromRef.current.a3;
+      const d4 = normalizeDeltaDeg(toRef.current.a4 - fromRef.current.a4);
       const na1 = fromRef.current.a1 + d1 * k;
       const na2 = fromRef.current.a2 + d2 * k;
       const na3 = fromRef.current.a3 + d3 * k;
+      const na4 = fromRef.current.a4 + d4 * k;
       setAnimA1(na1);
       setAnimA2(na2);
       setAnimA3(na3);
+      setAnimA4(na4);
       animA1Ref.current = na1;
       animA2Ref.current = na2;
       animA3Ref.current = na3;
+      animA4Ref.current = na4;
       if (t < 1) rafRef.current = requestAnimationFrame(step);
       else rafRef.current = null;
     };
@@ -295,7 +327,7 @@ export default function Home() {
       rafRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [angle1Deg, angle2Deg, angle3Deg]);
+  }, [angle1Deg, angle2Deg, angle3Deg, angle4Deg]);
 
   return (
     <div className="relative w-screen h-screen">
@@ -305,7 +337,7 @@ export default function Home() {
           onClick={() => {
             try {
               fetchAbortRef.current?.abort();
-            } catch { }
+            } catch {}
             if (stageTimerRef.current != null) {
               clearTimeout(stageTimerRef.current as unknown as number);
               stageTimerRef.current = null;
@@ -314,14 +346,15 @@ export default function Home() {
             setAngle1Deg(angles.baseYawDeg);
             setAngle2Deg(angles.shoulderPitchDeg);
             setAngle3Deg(angles.forearmPitchDeg);
+            setAngle4Deg(0);
             startTrajectory();
             try {
               fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ angles }),
-              }).catch(() => { });
-            } catch { }
+              }).catch(() => {});
+            } catch {}
           }}
           className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
           title="Move to home (0,0,0)"
@@ -335,10 +368,11 @@ export default function Home() {
             onClick={() => {
               activateGoal(i);
             }}
-            className={`px-2 py-1 rounded border ${activeTarget === i
-              ? 'border-blue-300 bg-blue-600 text-white'
-              : 'border-gray-400 bg-gray-500 hover:bg-gray-400'
-              } text-xl px-4 cursor-pointer`}
+            className={`px-2 py-1 rounded border ${
+              activeTarget === i
+                ? 'border-blue-300 bg-blue-600 text-white'
+                : 'border-gray-400 bg-gray-500 hover:bg-gray-400'
+            } text-xl px-4 cursor-pointer`}
             title={`Apply last IK for goal ${i + 1}`}
           >
             {i + 1}
@@ -398,6 +432,20 @@ export default function Home() {
             step={1}
             value={Math.min(Math.max(angle3Deg, -135), 135)}
             onChange={(e) => setAngle3Deg(Number(e.target.value))}
+          />
+        </div>
+        <div>
+          <label htmlFor="angle4" className="block mb-1">
+            Wrist pitch (deg): {Math.round(angle4Deg)}
+          </label>
+          <input
+            id="angle4"
+            type="range"
+            min={-135}
+            max={135}
+            step={1}
+            value={Math.min(Math.max(angle4Deg, -135), 135)}
+            onChange={(e) => setAngle4Deg(Number(e.target.value))}
           />
         </div>
       </div>
@@ -469,6 +517,7 @@ export default function Home() {
           angle1={(animA1 * Math.PI) / 180}
           angle2={(Math.min(Math.max(animA2, -90), 90) * Math.PI) / 180}
           angle3={(Math.min(Math.max(animA3, -135), 135) * Math.PI) / 180}
+          angle4={(Math.min(Math.max(animA4, -135), 135) * Math.PI) / 180}
           endEffectorRef={endEffectorRef}
         />
 

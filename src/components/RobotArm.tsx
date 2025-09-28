@@ -31,11 +31,13 @@ export function RobotArm({
   angle1 = 0,
   angle2 = 0,
   angle3 = 0,
+  angle4 = 0,
   endEffectorRef,
 }: {
   angle1?: number;
   angle2?: number;
   angle3?: number;
+  angle4?: number;
   endEffectorRef?: React.MutableRefObject<Object3D | null>;
 }) {
   return (
@@ -89,11 +91,34 @@ export function RobotArm({
                     depthWrite={false}
                   />
                 </mesh>
-                {/* End effector marker at forearm tip (+Y) */}
-                <group
-                  position={[0, 10, 0]}
-                  ref={endEffectorRef as React.MutableRefObject<Object3D | null>}
-                />
+                {/* Wrist joint (visual-only): rotate around X at forearm tip (0,10,0) */}
+                <AxisRotation axis={[1, 0, 0]} angle={angle4} offset={[0, 10, 0]}>
+                  {/* Left link: 4 cm along −X (centered at -2,0,0) */}
+                  <mesh position={[-2, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+                    <cylinderGeometry args={[2, 2, 4, 16]} />
+                    <meshStandardMaterial
+                      color="#0000ff"
+                      transparent
+                      opacity={0.45}
+                      depthWrite={false}
+                    />
+                  </mesh>
+                  {/* Up link: 5 cm along +Y from left link end (centered at -4,2.5,0) */}
+                  <mesh position={[-4, 2.5, 0]}>
+                    <cylinderGeometry args={[2, 2, 5, 16]} />
+                    <meshStandardMaterial
+                      color="#0000ff"
+                      transparent
+                      opacity={0.45}
+                      depthWrite={false}
+                    />
+                  </mesh>
+                  {/* End effector marker at wrist tip (-4,5,0) */}
+                  <group
+                    position={[-4, 5, 0]}
+                    ref={endEffectorRef as React.MutableRefObject<Object3D | null>}
+                  />
+                </AxisRotation>
               </AxisRotation>
             </group>
           </AxisRotation>

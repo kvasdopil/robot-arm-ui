@@ -35,7 +35,7 @@ def build_chain(cfg):
     ankle2_len = float(cfg.get("ankle2Length", 4))
     forearm_len = float(cfg.get("forearmLength", 10))
 
-    # We construct a chain with 9 links (3 actuated joints), ensuring each revolute joint is followed by a fixed-length link
+    # We construct a chain with 12 links (4 actuated joints), ensuring each revolute joint is followed by a fixed-length link
     # so the rotation affects the end-effector position:
     # 1) base_yaw (rot-y)
     # 2) base_len (fixed)
@@ -45,6 +45,9 @@ def build_chain(cfg):
     # 6) ankle2_link (fixed +X)
     # 7) forearm_joint (rot-x)
     # 8) forearm_link (fixed +Y)
+    # 9) wrist_joint (rot-x)
+    # 10) wrist_left (fixed -X, length=4)
+    # 11) wrist_up (fixed +Y, length=5)
 
     return Chain(name="robot_arm", links=[
         OriginLink(),
@@ -110,6 +113,29 @@ def build_chain(cfg):
             origin_orientation=[0.0, 0.0, 0.0],
             joint_type="fixed",
         ),
+        # Wrist joint at forearm tip: revolute around X
+        URDFLink(
+            name="wrist_joint",
+            origin_translation=[0.0, 0.0, 0.0],
+            origin_orientation=[0.0, 0.0, 0.0],
+            rotation=[1.0, 0.0, 0.0],
+            bounds=(-3*math.pi/4, 3*math.pi/4),
+            joint_type="revolute",
+        ),
+        # Wrist left: fixed -X by 4
+        URDFLink(
+            name="wrist_left",
+            origin_translation=[-4.0, 0.0, 0.0],
+            origin_orientation=[0.0, 0.0, 0.0],
+            joint_type="fixed",
+        ),
+        # Wrist up: fixed +Y by 5
+        URDFLink(
+            name="wrist_up",
+            origin_translation=[0.0, 5.0, 0.0],
+            origin_orientation=[0.0, 0.0, 0.0],
+            joint_type="fixed",
+        ),
     ])
 
 
@@ -147,6 +173,8 @@ def main():
             ("ankle", 4, 5),
             ("ankle2", 5, 6),
             ("forearm", 6, 8),
+            ("wrist_left", 8, 10),
+            ("wrist_up", 10, 11),
         ]
         bones_loc = [
             {"name": n, "start": pts[i], "end": pts[j]}
@@ -155,11 +183,13 @@ def main():
         base_yaw_loc = to_deg(ik[1])
         shoulder_pitch_loc = to_deg(ik[3])
         forearm_pitch_loc = to_deg(ik[7])
+        wrist_pitch_loc = to_deg(ik[9])
         return ({
             "angles": {
                 "baseYawDeg": clamp(base_yaw_loc, -180.0, 180.0),
                 "shoulderPitchDeg": clamp(shoulder_pitch_loc, -90.0, 90.0),
                 "forearmPitchDeg": clamp(forearm_pitch_loc, -135.0, 135.0),
+                "wristPitchDeg": clamp(wrist_pitch_loc, -135.0, 135.0),
             },
             "bones": bones_loc,
             "effector": pts[-1],
@@ -171,22 +201,24 @@ def main():
         candidates = []
         base = list(prev_ik_vec) if isinstance(prev_ik_vec, list) and len(prev_ik_vec) == len(chain.links) else [0.0 for _ in chain.links]
         candidates.append(base)
-        # Nudge shoulder/forearm up/down to escape wrong basin if needed
+        # Nudge shoulder/forearm/wrist up/down to escape wrong basin if needed
         for delta in (-0.5, 0.5, -1.0, 1.0):
             alt = list(base)
             alt[3] = clamp(alt[3] + delta, -math.pi/2, math.pi/2)
             alt[7] = clamp(alt[7] - delta, -3*math.pi/4, 3*math.pi/4)
+            alt[9] = clamp(alt[9] - delta, -3*math.pi/4, 3*math.pi/4)
             candidates.append(alt)
         best = None
         best_cost = None
         best_ik = None
         for init in candidates:
             pose, ik_vec = solve_pose(target_pos, init)
-            # cost: squared L2 over actuated joints [1,3,7]
+            # cost: squared L2 over actuated joints [1,3,7,9]
             d1 = float(ik_vec[1] - base[1])
             d2 = float(ik_vec[3] - base[3])
             d3 = float(ik_vec[7] - base[7])
-            cost = d1*d1 + d2*d2 + d3*d3
+            d4 = float(ik_vec[9] - base[9])
+            cost = d1*d1 + d2*d2 + d3*d3 + d4*d4
             if best is None or cost < best_cost:
                 best = pose
                 best_cost = cost
