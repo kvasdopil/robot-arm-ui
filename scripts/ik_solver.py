@@ -74,6 +74,11 @@ def normalize_quaternion_sign_for_endpoints(A0, A1):
         return A1
 
 
+def angle_diff(a: float, b: float) -> float:
+    """Shortest signed difference between two angles in radians."""
+    return (float(a) - float(b) + math.pi) % (2.0 * math.pi) - math.pi
+
+
 def build_chain(cfg):
     base_len = float(cfg.get("baseLength", 3))
     shoulder_len = float(cfg.get("shoulderLength", 4))
@@ -269,15 +274,15 @@ def main():
         best_cost = None
         best_ik = None
         best_rot = None
-        # Weights for joint deltas (heavier penalty on wrist to avoid flips)
-        joint_weights = {1: 1.0, 3: 1.0, 7: 1.0, 9: 2.0}
+        # Weights for joint deltas (strongest penalty on base yaw to discourage sweeping)
+        joint_weights = {1: 10.0, 3: 1.0, 7: 1.0, 9: 2.0}
         orientation_weight = 4.0  # scales radians^2 contribution
         for init in candidates:
             pose, ik_vec, eff_rot = solve_pose(target_pos, init, target_frame=target_frame)
             # cost: weighted squared L2 over actuated joints [1,3,7,9]
             cost = 0.0
             for j in (1, 3, 7, 9):
-                dj = float(ik_vec[j] - base[j])
+                dj = angle_diff(ik_vec[j], base[j])
                 wj = joint_weights.get(j, 1.0)
                 cost += wj * dj * dj
             # orientation continuity penalty if previous effector rotation is known
