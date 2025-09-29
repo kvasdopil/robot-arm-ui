@@ -31,7 +31,8 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 - `src/components/TargetsPolyline.tsx`: Draws orange polyline between targets and midpoint markers per segment
 - `src/components/ServoChart.tsx`: SVG chart of servo angles with end-of-trajectory markers
 - `src/app/api/ik/route.ts`: Next.js API route spawning Python solver
-- `src/app/api/move/route.ts`: Next.js API route that accepts target angles and forwards to the robot controller
+- `src/app/api/move/route.ts`: Next.js API route that accepts target angles and drives servos locally via Modbus
+- `src/app/api/position/route.ts`: Next.js API route that returns current servo angles via Modbus
 - `scripts/ik_solver.py`: Python ikpy solver (reads JSON on stdin, prints JSON)
 - `src/lib/ikts.ts`: TypeScript IK utilities (kept for reference, client no longer solves IK)
 
@@ -39,6 +40,7 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 
 - Node.js and npm
 - Python 3.9+ available at `/usr/bin/python3` (or compatible)
+- Serial access to Modbus RTU adapter (defaults to `/dev/ttyUSB0`)
 
 ### Setup
 
@@ -46,6 +48,16 @@ Interactive robotic arm playground using Next.js + Three.js with server-side IK 
 
 ```bash
 npm install
+```
+
+Environment variables (optional):
+
+```bash
+# Serial and timing
+SERVO_SERIAL_PORT=/dev/ttyUSB0
+SERVO_BAUD_RATE=38400
+SERVO_SLAVE_ID=1
+SERVO_TIMEOUT_MS=1000
 ```
 
 2. Create venv and install Python deps (ikpy, numpy, scipy, sympy)
@@ -152,8 +164,19 @@ echo '{"target":[1,3,-1], "origin":[0,2,0], "ctrajSteps":8}' | .venv/bin/python 
 - Behavior:
   - The endpoint accepts legacy `{ angles: {...} }` and new flat `{ a,b,c,d }` shapes.
   - For legacy input, signs are mapped to controller convention: `a = -baseYawDeg`, `b = shoulderPitchDeg`, `c = -forearmPitchDeg`, `d = -wristPitchDeg`.
-  - It forwards only provided fields to `http://nuc8.lan:3000/move`.
+  - It controls servos locally using Modbus RTU and supports optional per-axis speed (`as`,`bs`,`cs`) and accel (`aa`,`ba`,`ca`,`acc`).
   - The UI sends a move request for each intermediate stage and for the final target, so you’ll see multiple `/api/move` calls per move.
+
+### Position API
+
+- Path: `GET /api/position`
+- Response body:
+
+```json
+{ "a": null, "b": null, "c": null }
+```
+
+Returns current angles for servos 1..3 or `null` if read failed.
 
 To reset saved state:
 

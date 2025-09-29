@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       try {
         // Forward solver stderr to Next.js/server stderr so it appears in logs
         process.stderr.write(buf);
-      } catch { }
+      } catch {}
     });
 
     let resolved = false;
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         timedOut = true;
         try {
           py.kill('SIGKILL');
-        } catch { }
+        } catch {}
       }
     }, 20000);
 
