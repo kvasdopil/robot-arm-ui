@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
+import path from 'path';
 
 export const runtime = 'nodejs';
 
@@ -11,8 +12,9 @@ export async function POST(req: NextRequest) {
     if (!target || !Array.isArray(target) || target.length !== 3) {
       return NextResponse.json({ error: 'Invalid target' }, { status: 400 });
     }
-    const scriptPath = '/Users/lexa/projects/robot3/scripts/ik_solver.py';
-    const venvPython = '/Users/lexa/projects/robot3/.venv/bin/python';
+    const projectRoot = process.cwd();
+    const scriptPath = path.join(projectRoot, 'scripts', 'ik_solver.py');
+    const venvPython = path.join(projectRoot, '.venv', 'bin', 'python');
     const py = spawn(venvPython, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
 
     const payload = {
@@ -33,8 +35,18 @@ export async function POST(req: NextRequest) {
 
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
-    py.stdout.on('data', (d) => stdoutChunks.push(Buffer.isBuffer(d) ? d : Buffer.from(d)));
-    py.stderr.on('data', (d) => stderrChunks.push(Buffer.isBuffer(d) ? d : Buffer.from(d)));
+    py.stdout.on('data', (d) => {
+      const buf = Buffer.isBuffer(d) ? d : Buffer.from(d);
+      stdoutChunks.push(buf);
+    });
+    py.stderr.on('data', (d) => {
+      const buf = Buffer.isBuffer(d) ? d : Buffer.from(d);
+      stderrChunks.push(buf);
+      try {
+        // Forward solver stderr to Next.js/server stderr so it appears in logs
+        process.stderr.write(buf);
+      } catch { }
+    });
 
     let resolved = false;
     let timedOut = false;
@@ -61,7 +73,7 @@ export async function POST(req: NextRequest) {
         timedOut = true;
         try {
           py.kill('SIGKILL');
-        } catch {}
+        } catch { }
       }
     }, 20000);
 
