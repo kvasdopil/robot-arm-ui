@@ -2,6 +2,7 @@
 import sys
 import json
 import math
+import numpy as np
 
 try:
     from ikpy.chain import Chain
@@ -26,6 +27,51 @@ def to_deg(rad: float) -> float:
 def vec_from_frame(frame):
     # frame: 4x4
     return [float(frame[0, 3]), float(frame[1, 3]), float(frame[2, 3])]
+
+
+def rot_from_frame(frame):
+    # Returns 3x3 rotation matrix (numpy array)
+    return np.array([[float(frame[0, 0]), float(frame[0, 1]), float(frame[0, 2])],
+                     [float(frame[1, 0]), float(frame[1, 1]), float(frame[1, 2])],
+                     [float(frame[2, 0]), float(frame[2, 1]), float(frame[2, 2])]])
+
+
+def orientation_angle_between(R_prev: np.ndarray, R_curr: np.ndarray) -> float:
+    # Computes the geodesic angle between two rotations using trace formula
+    # Clamp for numerical stability
+    R_delta = R_prev.T.dot(R_curr)
+    tr = float(np.trace(R_delta))
+    cos_theta = (tr - 1.0) * 0.5
+    if cos_theta > 1.0:
+        cos_theta = 1.0
+    elif cos_theta < -1.0:
+        cos_theta = -1.0
+    return float(math.acos(cos_theta))
+
+
+def normalize_quaternion_sign_for_endpoints(A0, A1):
+    """Ensure shortest-arc interpolation by flipping the sign of q1 if dot(q0,q1)<0.
+    Accepts 4x4 transforms (numpy-like); returns possibly adjusted 4x4 for A1.
+    """
+    try:
+        # Lazy import to avoid adding a hard dependency at module load
+        from scipy.spatial.transform import Rotation as SciRot  # type: ignore
+        R0 = np.array([[float(A0[0, 0]), float(A0[0, 1]), float(A0[0, 2])],
+                       [float(A0[1, 0]), float(A0[1, 1]), float(A0[1, 2])],
+                       [float(A0[2, 0]), float(A0[2, 1]), float(A0[2, 2])]])
+        R1 = np.array([[float(A1[0, 0]), float(A1[0, 1]), float(A1[0, 2])],
+                       [float(A1[1, 0]), float(A1[1, 1]), float(A1[1, 2])],
+                       [float(A1[2, 0]), float(A1[2, 1]), float(A1[2, 2])]])
+        q0 = SciRot.from_matrix(R0).as_quat()  # [x,y,z,w]
+        q1 = SciRot.from_matrix(R1).as_quat()
+        if float(np.dot(q0, q1)) < 0.0:
+            q1 = -q1
+        R1n = SciRot.from_quat(q1).as_matrix()
+        A1n = np.array(A1, dtype=float).copy()
+        A1n[0:3, 0:3] = R1n
+        return A1n
+    except Exception:
+        return A1
 
 
 def build_chain(cfg):
@@ -159,14 +205,25 @@ def main():
 
     chain = build_chain(cfg)
 
-    # Helper to solve IK and return (pose, ik_vector)
-    def solve_pose(target_pos, init_guess):
+    # Helper to solve IK and return (pose, ik_vector, eff_rot3x3)
+    def solve_pose(target_pos, init_guess, target_frame=None):
         # Ensure init guess length matches links
         if not isinstance(init_guess, list) or len(init_guess) != len(chain.links):
             init_guess = [0.0 for _ in chain.links]
-        ik = chain.inverse_kinematics(target_position=target_pos, initial_position=init_guess)
+        ik = None
+        # Try full-pose IK when possible
+        if target_frame is not None:
+            try:
+                # Preferred API (available in newer ikpy)
+                ik = chain.inverse_kinematics_frame(target_frame, initial_position=init_guess)  # type: ignore[attr-defined]
+            except Exception:
+                # Fallback to position-only if full frame isn't supported
+                ik = chain.inverse_kinematics(target_position=target_pos, initial_position=init_guess)
+        else:
+            ik = chain.inverse_kinematics(target_position=target_pos, initial_position=init_guess)
         frames = chain.forward_kinematics(ik, full_kinematics=True)
         pts = [vec_from_frame(f) for f in frames]
+        eff_rot = rot_from_frame(frames[-1])
         bone_defs = [
             ("base", 1, 2),
             ("shoulder", 2, 4),
@@ -193,10 +250,10 @@ def main():
             },
             "bones": bones_loc,
             "effector": pts[-1],
-        }, ik)
+        }, ik, eff_rot)
 
-    # Prefer continuity: evaluate multiple initial guesses and choose solution closest to prev_ik
-    def solve_pose_prefer_continuity(target_pos, prev_ik_vec):
+    # Prefer continuity: evaluate multiple initial guesses and choose solution closest to prev_ik and orientation
+    def solve_pose_prefer_continuity(target_pos, prev_ik_vec, target_frame=None, prev_eff_rot=None):
         # Base candidate: previous ik
         candidates = []
         base = list(prev_ik_vec) if isinstance(prev_ik_vec, list) and len(prev_ik_vec) == len(chain.links) else [0.0 for _ in chain.links]
@@ -211,19 +268,31 @@ def main():
         best = None
         best_cost = None
         best_ik = None
+        best_rot = None
+        # Weights for joint deltas (heavier penalty on wrist to avoid flips)
+        joint_weights = {1: 1.0, 3: 1.0, 7: 1.0, 9: 2.0}
+        orientation_weight = 4.0  # scales radians^2 contribution
         for init in candidates:
-            pose, ik_vec = solve_pose(target_pos, init)
-            # cost: squared L2 over actuated joints [1,3,7,9]
-            d1 = float(ik_vec[1] - base[1])
-            d2 = float(ik_vec[3] - base[3])
-            d3 = float(ik_vec[7] - base[7])
-            d4 = float(ik_vec[9] - base[9])
-            cost = d1*d1 + d2*d2 + d3*d3 + d4*d4
+            pose, ik_vec, eff_rot = solve_pose(target_pos, init, target_frame=target_frame)
+            # cost: weighted squared L2 over actuated joints [1,3,7,9]
+            cost = 0.0
+            for j in (1, 3, 7, 9):
+                dj = float(ik_vec[j] - base[j])
+                wj = joint_weights.get(j, 1.0)
+                cost += wj * dj * dj
+            # orientation continuity penalty if previous effector rotation is known
+            if isinstance(prev_eff_rot, np.ndarray):
+                try:
+                    ang = orientation_angle_between(prev_eff_rot, eff_rot)
+                    cost += orientation_weight * ang * ang
+                except Exception:
+                    pass
             if best is None or cost < best_cost:
                 best = pose
                 best_cost = cost
                 best_ik = ik_vec
-        return best, best_ik
+                best_rot = eff_rot
+        return best, best_ik, best_rot
 
     try:
         if isinstance(origin, list) and len(origin) == 3:
@@ -243,6 +312,7 @@ def main():
 
             intermediates = []
             prev_ik = [0.0 for _ in chain.links]
+            prev_rot = None
 
             # Require Robotics Toolbox ctraj/SE3 interpolation
             try:
@@ -264,6 +334,20 @@ def main():
                     raise RuntimeError("Robotics Toolbox not available")
                 T0 = SE3(float(origin[0]), float(origin[1]), float(origin[2]))
                 T1 = SE3(float(target[0]), float(target[1]), float(target[2]))
+                # Normalize quaternion sign to avoid 360° slerp when orientations are equivalent
+                try:
+                    A0n = T0.A  # type: ignore
+                    A1n = T1.A  # type: ignore
+                    A1n = normalize_quaternion_sign_for_endpoints(A0n, A1n)
+                    # Re-wrap into SE3 if possible
+                    try:
+                        T1 = SE3(A1n)  # type: ignore
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                # Seed baseline by solving the origin pose to capture initial orientation
+                _, prev_ik, prev_rot = solve_pose_prefer_continuity([float(origin[0]), float(origin[1]), float(origin[2])], prev_ik, target_frame=T0.A, prev_eff_rot=None)
                 if isinstance(ctraj_steps, int) and ctraj_steps > 1:
                     Ts = ctraj(T0, T1, int(ctraj_steps))
                     # Ts may be a numpy array of shape (4,4,N) or an iterable of SE3
@@ -272,7 +356,7 @@ def main():
                         for k in range(1, max(0, n - 1)):
                             A = Ts[:, :, k]  # type: ignore
                             t = [float(A[0, 3]), float(A[1, 3]), float(A[2, 3])]
-                            pose, prev_ik = solve_pose_prefer_continuity(t, prev_ik)
+                            pose, prev_ik, prev_rot = solve_pose_prefer_continuity(t, prev_ik, target_frame=A, prev_eff_rot=prev_rot)
                             intermediates.append(pose)
                     elif hasattr(Ts, "__iter__"):
                         seq = list(Ts)
@@ -284,24 +368,26 @@ def main():
                             if t is None and hasattr(T, "A"):
                                 A = T.A  # type: ignore
                                 t = [float(A[0, 3]), float(A[1, 3]), float(A[2, 3])]
+                                pose, prev_ik, prev_rot = solve_pose_prefer_continuity(t, prev_ik, target_frame=A, prev_eff_rot=prev_rot)
+                                intermediates.append(pose)
                             elif t is not None:
                                 t = [float(t[0]), float(t[1]), float(t[2])]
+                                pose, prev_ik, prev_rot = solve_pose_prefer_continuity(t, prev_ik, target_frame=T.A if hasattr(T, "A") else None, prev_eff_rot=prev_rot)
+                                intermediates.append(pose)
                             else:
                                 continue
-                            pose, prev_ik = solve_pose_prefer_continuity(t, prev_ik)
-                            intermediates.append(pose)
                 else:
                     for f in sorted(fracs):
                         Ti = T0.interp(T1, float(f))
                         t = Ti.t
                         p = [float(t[0]), float(t[1]), float(t[2])]
-                        pose, prev_ik = solve_pose_prefer_continuity(p, prev_ik)
+                        pose, prev_ik, prev_rot = solve_pose_prefer_continuity(p, prev_ik, target_frame=Ti.A if hasattr(Ti, "A") else None, prev_eff_rot=prev_rot)
                         intermediates.append(pose)
             except Exception as e:
                 print(json.dumps({"error": "ctraj required", "details": str(e)}))
                 sys.exit(2)
 
-            final_pose, _ = solve_pose_prefer_continuity(target, prev_ik)
+            final_pose, _, _ = solve_pose_prefer_continuity(target, prev_ik, target_frame=T1.A, prev_eff_rot=prev_rot)
             out = {
                 "intermediates": intermediates,
                 "final": final_pose,

@@ -245,23 +245,8 @@ export default function Home() {
       });
   }
 
-  function applyGoal(goalIndex: number) {
-    const a = lastAnglesRef.current[goalIndex];
-    const b = lastBonesRef.current[goalIndex];
-    if (!a || !b) return;
-    setAngle1Deg(a.baseYawDeg);
-    setAngle2Deg(Math.max(-90, Math.min(90, a.shoulderPitchDeg)));
-    setAngle3Deg(Math.max(-135, Math.min(135, a.forearmPitchDeg)));
-    setServerBones(b);
-    startTrajectory();
-  }
-
   function getGoalPos(goalIndex: number): [number, number, number] {
     return targets[goalIndex];
-  }
-
-  function hasGoalIk(goalIndex: number): boolean {
-    return !!lastAnglesRef.current[goalIndex] && !!lastBonesRef.current[goalIndex];
   }
 
   function activateGoal(goalIndex: number) {
