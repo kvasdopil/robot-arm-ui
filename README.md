@@ -143,21 +143,16 @@ echo '{"target":[1,3,-1], "origin":[0,2,0], "ctrajSteps":8}' | .venv/bin/python 
 ### Move API (robot command)
 
 - Path: `POST /api/move`
-- Request body:
+- Request body (all fields optional, degrees):
 
 ```json
-{
-  "angles": {
-    "baseYawDeg": number,
-    "shoulderPitchDeg": number,
-    "forearmPitchDeg": number
-  }
-}
+{ "a": number, "b": number, "c": number, "d": number }
 ```
 
 - Behavior:
-  - The endpoint validates angles and forwards them to the controller (see `src/app/api/move/route.ts`).
-  - By default it posts to `http://nuc8.lan:3000/move` with `{ a, b, c, aa, ba, ca }`, mapping signs to the controller’s convention.
+  - The endpoint accepts legacy `{ angles: {...} }` and new flat `{ a,b,c,d }` shapes.
+  - For legacy input, signs are mapped to controller convention: `a = -baseYawDeg`, `b = shoulderPitchDeg`, `c = -forearmPitchDeg`, `d = -wristPitchDeg`.
+  - It forwards only provided fields to `http://nuc8.lan:3000/move`.
   - The UI sends a move request for each intermediate stage and for the final target, so you’ll see multiple `/api/move` calls per move.
 
 To reset saved state:

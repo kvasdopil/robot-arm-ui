@@ -13,6 +13,7 @@ import RobotArm from '@/components/RobotArm';
 import IkDebug, { BonePoint } from '@/components/IkDebug';
 import TargetsPolyline from '@/components/TargetsPolyline';
 import ServoChart from '@/components/ServoChart';
+import { FiHome, FiPlus } from 'react-icons/fi';
 
 export default function Home() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
@@ -208,10 +209,19 @@ export default function Home() {
           setServerBones(pose.bones);
           // Notify move endpoint for each stage (intermediate + final)
           try {
+            const a = -pose.angles.baseYawDeg;
+            const b = Math.max(-90, Math.min(90, pose.angles.shoulderPitchDeg));
+            const c = -Math.max(-135, Math.min(135, pose.angles.forearmPitchDeg));
+            const d =
+              typeof pose.angles.wristPitchDeg === 'number'
+                ? -Math.max(-135, Math.min(135, pose.angles.wristPitchDeg))
+                : undefined;
+            const payload: Record<string, number> = { a, b, c };
+            if (typeof d === 'number') payload.d = d;
             fetch('/api/move', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ angles: pose.angles }),
+              body: JSON.stringify(payload),
             }).catch(() => {});
           } catch {}
           startTrajectory();
@@ -342,7 +352,12 @@ export default function Home() {
               clearTimeout(stageTimerRef.current as unknown as number);
               stageTimerRef.current = null;
             }
-            const angles = { baseYawDeg: 0, shoulderPitchDeg: 0, forearmPitchDeg: 0 };
+            const angles = {
+              baseYawDeg: 0,
+              shoulderPitchDeg: 0,
+              forearmPitchDeg: 0,
+              wristPitchDeg: 0,
+            };
             setAngle1Deg(angles.baseYawDeg);
             setAngle2Deg(angles.shoulderPitchDeg);
             setAngle3Deg(angles.forearmPitchDeg);
@@ -352,14 +367,14 @@ export default function Home() {
               fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ angles }),
+                body: JSON.stringify({ a: 0, b: 0, c: 0, d: 0 }),
               }).catch(() => {});
             } catch {}
           }}
-          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          className="px-3 py-2 rounded border border-gray-400 bg-gray-500 hover:bg-gray-400 text-xl"
           title="Move to home (0,0,0)"
         >
-          Home
+          <FiHome size={20} />
         </button>
         {targets.map((_, i) => (
           <button
@@ -385,10 +400,10 @@ export default function Home() {
             setTargets(appended);
             setActiveTarget(appended.length - 1);
           }}
-          className="px-2 py-1 rounded border border-gray-400 bg-white/80 dark:bg-black/60 hover:bg-white dark:hover:bg-black text-xl px-4"
+          className="px-3 py-2 rounded border border-gray-400 bg-gray-500 hover:bg-gray-400 text-xl"
           title="Add new target"
         >
-          +
+          <FiPlus size={20} />
         </button>
       </div>
       <div className="absolute left-4 top-4 z-10 rounded-md bg-white/80 dark:bg-black/60 backdrop-blur p-3 shadow text-sm space-y-2">

@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
+
 type AngleSample = { a1: number; a2: number; a3: number; mark?: boolean };
 
 function mapY(v: number, height: number): number {
@@ -36,18 +38,43 @@ export default function ServoChart({
   height?: number;
 }) {
   const gridYs = [-180, -90, 0, 90, 180];
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [measuredWidth, setMeasuredWidth] = useState<number>(width);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const apply = () => setMeasuredWidth(el.clientWidth || width);
+    apply();
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver(() => apply());
+      ro.observe(el);
+    } catch {
+      window.addEventListener('resize', apply);
+    }
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener('resize', apply);
+    };
+  }, [width]);
   return (
-    <div className="w-full" style={{ height }}>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" preserveAspectRatio="none">
+    <div ref={containerRef} className="w-full" style={{ height }}>
+      <svg
+        viewBox={`0 0 ${measuredWidth} ${height}`}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="none"
+      >
         {/* Background */}
-        <rect x={0} y={0} width={width} height={height} fill="#ddd" />
+        <rect x={0} y={0} width={measuredWidth} height={height} fill="#ddd" />
 
         {/* Grid lines */}
         {gridYs.map((val, idx) => {
           const y = mapY(val, height);
           return (
             <g key={`grid-${idx}`}>
-              <line x1={0} y1={y} x2={width} y2={y} stroke="#aaf" strokeWidth={1} />
+              <line x1={0} y1={y} x2={measuredWidth} y2={y} stroke="#aaf" strokeWidth={1} />
               <text x={4} y={y - 2} fontSize={10} fill="#666">
                 {val}
               </text>
@@ -57,19 +84,19 @@ export default function ServoChart({
 
         {/* Single series paths (last 200 sampled points provided by parent) */}
         <path
-          d={buildPath(current, (s) => s.a1, width, height)}
+          d={buildPath(current, (s) => s.a1, measuredWidth, height)}
           stroke="#ff5722"
           strokeWidth={2}
           fill="none"
         />
         <path
-          d={buildPath(current, (s) => s.a2, width, height)}
+          d={buildPath(current, (s) => s.a2, measuredWidth, height)}
           stroke="#2196f3"
           strokeWidth={2}
           fill="none"
         />
         <path
-          d={buildPath(current, (s) => s.a3, width, height)}
+          d={buildPath(current, (s) => s.a3, measuredWidth, height)}
           stroke="#4caf50"
           strokeWidth={2}
           fill="none"
@@ -77,7 +104,7 @@ export default function ServoChart({
         {/* Vertical markers inline with samples */}
         {current.map((s, i) => {
           if (!s.mark) return null;
-          const step = current.length > 1 ? width / (current.length - 1) : 0;
+          const step = current.length > 1 ? measuredWidth / (current.length - 1) : 0;
           const x = i * step;
           return (
             <line
